@@ -1,0 +1,75 @@
+---
+title: "YosemiteDemo"
+author: "Zack Steel"
+date: "5/31/2020"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE)
+knitr::opts_knit$set(root.dir = "..")
+library(tidyverse)
+library(sf)
+library(raster)
+library(stars)
+library(fasterize)
+library(tictoc)
+```
+
+# Quantifying Pyrodiversity  
+
+Here I demonstrate the functionality of the [Pyrodiversity](https://github.com/zacksteel/pyrodiversity) repository, which is associated with the publication "Quantifying pyrodiversity and its drivers" (coming to journal near you). I will limit calculations to the watersheds which intersect Yosemite National Park in California's Sierra Nevada Mountains and to moderate to large size fires (>404 ha) included in the Monitoring Trends in Burn Severity (MTBS) perimeters. I use the burn perimeters from MTBS but severity is calculated according to [Parks et al. 2019](https://www.mdpi.com/2072-4292/11/14/1735).   
+
+This demonstration is split into two parts: 1) pyrodiversity is calculated at the watershed scale for each of the HUC10s that intersect Yosemite, and 2) at the point scale using 500m radii around hypothetical biodiversity survey points.  
+
+All data for this demonstration are included in this repository, which can be cloned to run on your own. Alternatively, users can apply this code to their own fires and landscapes of interested. To do so you will need continous composite burn index (CBI) rasters calculated using the Parks model or another validated burn severity model.  
+
+## 1. Watershed-scale pyrodiversity  
+
+There are 17 HUC10 watersheds that intersect Yosemite and 72 fires that intersect those watersheds between 1985 and 2018.  
+
+
+```{r}
+## read in shapefiles
+yose <- read_sf("data/spatial/yosemite.shp")
+hucs <- read_sf("data/spatial/yose_sheds.shp")
+fires <- read_sf("data/spatial/yose_mtbs.shp")
+
+ggplot() +
+  geom_sf(data = yose, fill = "darkgreen", color = NA, alpha = 0.3) +
+  geom_sf(data = hucs, fill = NA) +
+  geom_sf(data = fires, fill = "grey30", color = NA, alpha = 0.4) +
+  theme_void()
+```
+
+For each we will build fire trait surfaces for frequency, seasonality, severity and patch size.  
+
+```{r}
+## load functions
+source("code/fri_surface.R")
+
+## Frequency calculation (takes about 30 seconds)
+for (i in 1:nrow(hucs)) {
+    ## pull out single landscape          
+    huc <- hucs[i,]
+    
+    fri_surface(landscape = huc, #shapefile of landsape of interest
+                fires = fires, #shapefile containing fire IDs associated with severity rasters
+                ID = "HUC10", #label of the unique landscape identifier
+                fire_years = "Year", # label of the fire year column
+                start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
+                end_year = 2018, # Year after end of dataset (for MTBS: 2018)
+                decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+                out_dir = "data/spatial/yose_fri") #path to hold output rasters
+}
+
+## Seasonality calculation
+
+## Severity calculation
+
+```
+
+
+## 2. Point-scale pyrodiversity
+
+
