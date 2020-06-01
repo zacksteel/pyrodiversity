@@ -1,7 +1,5 @@
 ## Purpose: Calculate a fire order-weighted mean return interval surface across a landscape
 ## Author: Zack Steel
-## Upstream: trait_surfaces.R
-## Downstream:
 
 fri_surface <- function(landscape, # feature(s) that represent the landscape of interest
                         fires, #shapefile containing fire IDs associated with severity rasters
