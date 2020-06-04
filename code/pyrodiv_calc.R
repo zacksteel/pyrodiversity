@@ -17,9 +17,9 @@ pyrodiv_calc <- function(
     }
 
     ## projection mask if needed
-    if(all.equal(crs(ts), crs(m)) != TRUE) {
+    if(!(identical(crs(ts), crs(m)) & identical(extent(ts), extent(m)))) {
       m <- suppressWarnings(projectRaster(from = m, crs = crs(ts), res = res(ts), #gives a warning about missing values, maybe because are only == 1?, function appear to work
-                             method = "ngb", alignOnly = T)) %>% 
+                             method = "ngb", alignOnly = F)) %>% 
         ## necessary to resample to align extents
         resample(y = ts, method = "ngb")
     }
@@ -33,7 +33,11 @@ pyrodiv_calc <- function(
       as.data.frame()
     names(ctab) <- c(names(ts), "Freq")
   } else {
-    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) 
+    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) #%>% 
+      ## drop row with all NA traits
+      # mutate(dropna = rowSums(dplyr::select(., contains("layer")), na.rm = T)) %>% 
+      # filter(dropna > 0) %>% 
+      # dplyr::select(-dropna)
   }
   
   ## drop all NA row

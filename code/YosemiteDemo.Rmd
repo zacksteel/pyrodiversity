@@ -153,14 +153,18 @@ pd <- lapply(1:nrow(hucs), function(i) {
     round(digits = 1)
   sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
     raster() %>% 
-    mround(base = 5, digits = 0)
+    mround(base = 5, digits = 1)
   pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>% 
     raster() %>% 
     round(digits = 0)
+  
+  ## Bring in mask raster
+  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
+    raster()
 
 source("code/pyrodiv_calc.R")
 d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths to trait rasters 
-                  mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
+                  mask = flam_r #optional mask layer path (e.g. remove non-flammable areas)
              )
 return(d)
 }) %>% 

@@ -28,8 +28,10 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   r_template <- raster("data/spatial/CBI_template.tif")
   land_r <- raster(landscape, resolution = res(r_template), vals = 1) %>% 
     mask(landscape)
+  crs(land_r) <- crs(r_template)
   noburn_r <- raster(landscape, resolution = res(r_template), vals = end_year - start_year) %>% 
     mask(landscape)
+  crs(noburn_r) <- crs(r_template)
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {
@@ -37,9 +39,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     
     writeRaster(noburn_r, filename = fn_r, overwrite = T)
     
-    out <- basename(fn_r) } 
-  
-  else {
+    out <- basename(fn_r) } else {
 
     ## limit to landscape
     fires_land <- suppressMessages(st_intersection(fires, landscape))
@@ -51,7 +51,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## simplify to just year attributes and "dissolve"
     f_year <- dplyr::select(fires_land, year = one_of(fire_years)) %>% 
       ## add landscape feature as a starting year
-      rbind(f_year,land_year) %>%
+      rbind(land_year) %>%
       group_by(year) %>%
       summarise() 
     
@@ -106,9 +106,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
                 yslf = unlist(yslf))
     
     ## Pull out polygons (i.e. drop linesstrings from collections)
-    # d2 <- st_collection_extract(d, "POLYGON")
-    d2 <- d %>% 
-      filter(st_geometry_type(.) %in% c("POLYGON", "MULTIPOLYGON"))
+    d2 <- st_collection_extract(d, "POLYGON")
     
     fri_r <- fasterize(d2, noburn_r, field = "fri") 
     
