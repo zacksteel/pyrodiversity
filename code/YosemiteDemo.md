@@ -1,7 +1,6 @@
-YosemiteDemo
+Pyrodiversity Yosemite Demo
 ================
 Zack Steel
-5/31/2020
 
 # Quantifying Pyrodiversity
 
@@ -44,9 +43,9 @@ ignition date (Julian day), ignition year and unique fire ID, as well as
 fire severity rasters (currently limited to composite burn index) that
 can be associated with the perimeter shapefile using the fire ID.
 
-*Demo: There are 17 HUC10 watersheds (black outlines) that intersect
-Yosemite (green polygon) and 72 fires (semi-transparent grey polygons)
-that intersect those watersheds between 1985 and 2018.*
+*Demo: There are 10 HUC10 watersheds (black outlines) whose centroids
+are within Yosemite (green polygon) and 64 fires (semi-transparent grey
+polygons) that intersect those watersheds between 1985 and 2018.*
 
 ``` r
 ## read in shapefiles
@@ -69,13 +68,13 @@ as.data.frame(yose_fires) %>%
   head()
 ```
 
-    ##                 Fire_ID Fire_Name Year jday
-    ## 1 CA3726811933420140728    FRENCH 2014  209
-    ## 2 CA3749911974020080621    OLIVER 2008  173
-    ## 3 CA3755011992320130616  CARSTENS 2013  167
-    ## 4 CA3755311966920080409 WAWONA NW 2008  100
-    ## 5 CA3757311966320071029      JACK 2007  302
-    ## 6 CA3759211908519920820   RAINBOW 1992  233
+    ##                 Fire_ID          Fire_Name Year jday
+    ## 1 CA3749911974020080621             OLIVER 2008  173
+    ## 2 CA3755011992320130616           CARSTENS 2013  167
+    ## 3 CA3755311966920080409          WAWONA NW 2008  100
+    ## 4 CA3757311966320071029               JACK 2007  302
+    ## 5 CA3759811955420160626              LAKES 2016  178
+    ## 6 CA3762911959119990711 SOUTH PARK COMPLEX 1999  192
 
 ## 2\. Generate fire trait surfaces
 
@@ -89,9 +88,11 @@ States. These surfaces use equally weighted fire traits and a importance
 decay of 0.5 (recent fires receive twice the weight as the previous
 fire).
 
-*Demo: for each Yosemite-intersecting watershed we will build fire trait
-surfaces for frequency, seasonality, severity and patch size of each
-watershed.*
+*Demo: for each watershed whose centroid is within Yosemite we will
+build fire trait surfaces for frequency, seasonality, severity and patch
+size of each watershed. Code below can be run for all (\~1hr run time)
+or you can skip this block and read in pre-calculated layers in step \#3
+below.*
 
 ``` r
 ## load functions
@@ -100,7 +101,8 @@ source("code/season_surface.R")
 source("code/sev_surface.R")
 source("code/patch_surface.R")
 
-## Frequency calculation (takes about 30 seconds)
+
+## Frequency calculation (takes about 40 seconds)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -115,7 +117,9 @@ for (i in 1:nrow(hucs)) {
                 out_dir = "data/spatial/yose_fri") #path to hold output rasters
 }
 
-## Seasonality calculation (takes about 20 seconds)
+
+
+## Seasonality calculation (takes about 25 seconds)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -128,6 +132,7 @@ for (i in 1:nrow(hucs)) {
                    decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                    out_dir = "data/spatial/yose_sea") #path to hold output rasters
 }
+
 
 ## Severity and patch surface functions are much slower, consider parallel processing
 ## if running for large or many landscapes
@@ -145,7 +150,9 @@ for (i in 1:nrow(hucs)) {
                 out_dir = "data/spatial/yose_sev") #path to hold output rasters
 }
 
-## Patch calculation (takes about 1.4 hrs)
+
+
+## Patch calculation (takes about 1.1 hrs)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -160,6 +167,11 @@ for (i in 1:nrow(hucs)) {
 }
 ```
 
+*For illustration, here is what the four surfaces look like for the
+Upper-Merced watershed, with non-vegetated areas masked out.*
+
+![](../figures/ex2_surfaces.png)
+
 ## 3 Calculate pyrodviersity from surfaces
 
 This can be done for a full landscape (e.g. a watershed) or buffered
@@ -168,6 +180,7 @@ add a sample point example at a later date.
 
 ``` r
 ## Calculate pyrodviersity for each watershed
+## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {
   huc <- hucs[i,]
   id <- as.data.frame(huc)[1,"HUC10"]
@@ -186,49 +199,37 @@ pd <- lapply(1:nrow(hucs), function(i) {
     round(digits = 1)
   sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
     raster() %>% 
-    mround(base = 5, digits = 0)
+    mround(base = 5, digits = 1)
   pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>% 
     raster() %>% 
     round(digits = 0)
+  
+  ## Bring in mask raster
+  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
+    raster()
 
 source("code/pyrodiv_calc.R")
 d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths to trait rasters 
-                  mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
+                  mask = flam_r #optional mask layer path (e.g. remove non-flammable areas)
              )
 return(d)
 }) %>% 
   bind_rows()
+
+write.csv(pd, "data/yose_pyrodiv.csv", row.names = F)
 ```
 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## FEVe: Could not be calculated for communities with <3 functionally singular species. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied. 
-    ## Species x species distance matrix was not Euclidean. Cailliez correction was applied.
-
 ``` r
-write.csv(pd, "data/yose_pyrodiv.csv", row.names = F)
+pd <- read.csv("data/yose_pyrodiv.csv")
 
-hucs2 <- cbind(hucs, pd)
+hucs2 <- bind_cols(hucs, pd)
 
 ggplot() +
   geom_sf(data = hucs2, aes(fill = FDis), color = NA) +
       scale_fill_continuous_sequential(palette = "Heat",
                                      name = "Pyrodiversity") +
-  geom_sf(data = yose, fill = NA, color = "darkgreen") +
+  geom_sf(data = yose, fill = NA, color = "darkgreen", size = 1.25) +
   theme_void()
 ```
 
-![](YosemiteDemo_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](YosemiteDemo_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->

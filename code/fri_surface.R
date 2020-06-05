@@ -26,12 +26,14 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   
   ## Pull in severity raster to use as template
   r_template <- raster("data/spatial/CBI_template.tif")
-  land_r <- raster(landscape, resolution = res(r_template), vals = 1) %>% 
+
+  land_r <- as_Spatial(landscape) %>% 
+    raster(resolution = res(r_template), vals = 1) %>% 
     mask(landscape)
-  crs(land_r) <- crs(r_template)
-  noburn_r <- raster(landscape, resolution = res(r_template), vals = end_year - start_year) %>% 
+
+  noburn_r <- as_Spatial(landscape) %>%
+    raster(resolution = res(r_template), vals = end_year - start_year) %>% 
     mask(landscape)
-  crs(noburn_r) <- crs(r_template)
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {
@@ -72,7 +74,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
       ## orders of magnitude faster with stars package than raster
       ## https://r-spatial.github.io/stars/articles/stars5.html
       f_year2  <- lapply(1:nrow(f_year), function(x) 
-        st_rasterize(f_year[x,"year"])) %>% 
+        st_rasterize(f_year[x,"year"], template = st_as_stars(land_r))) %>% 
         lapply(function(x) st_as_sf(x, merge = T))
       f_year2 <- do.call(rbind, f_year2) %>% 
         ## make multipolygons
@@ -106,9 +108,9 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
                 yslf = unlist(yslf))
     
     ## Pull out polygons (i.e. drop linesstrings from collections)
-    d2 <- st_collection_extract(d, "POLYGON")
+    d2 <- st_collection_extract(d, "POLYGON") 
     
-    fri_r <- fasterize(d2, noburn_r, field = "fri") 
+    fri_r <- fasterize(d2, noburn_r, field = "fri")
     
     ## save
     writeRaster(fri_r, filename = fn_r, overwrite = T)

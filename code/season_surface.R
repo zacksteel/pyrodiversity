@@ -26,8 +26,8 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
   
   ## Pull in severity raster to use as template
   r_template <- raster("data/spatial/CBI_template.tif")
-  noburn_r <- raster(landscape, resolution = res(r_template), vals = NA)
-  crs(noburn_r) <- crs(r_template)
+  noburn_r <- as_Spatial(landscape) %>% 
+    raster(resolution = res(r_template), vals = NA)
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {

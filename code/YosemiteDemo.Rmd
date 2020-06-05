@@ -1,7 +1,7 @@
 ---
-title: "YosemiteDemo"
+title: "Pyrodiversity Yosemite Demo"
 author: "Zack Steel"
-date: "5/31/2020"
+# date: "5/31/2020"
 output: rmarkdown::github_document
 ---
 
@@ -16,7 +16,7 @@ library(fasterize)
 library(lwgeom)
 library(FD)
 library(colorspace)
-library(tictoc)
+library(knitr)
 ```
 
 # Quantifying Pyrodiversity  
@@ -33,7 +33,7 @@ Estimates of burn severity (and subsequently patch size) are dependent on Landsa
 
 This fire history data must include a fire perimeter shapefile with ignition date (Julian day), ignition year and unique fire ID, as well as fire severity rasters (currently limited to composite burn index) that can be associated with the perimeter shapefile using the fire ID.  
 
-*Demo: There are 17 HUC10 watersheds (black outlines) that intersect Yosemite (green polygon) and 72 fires (semi-transparent grey polygons) that intersect those watersheds between 1985 and 2018.*  
+*Demo: There are 10 HUC10 watersheds (black outlines) whose centroids are within Yosemite (green polygon) and 64 fires (semi-transparent grey polygons) that intersect those watersheds between 1985 and 2018.*  
 
 
 ```{r}
@@ -57,7 +57,7 @@ as.data.frame(yose_fires) %>%
 
 Fire trait surfaces can be generated using the functions included in this repository, and allow a user to define trait weights and the importance decay rate of the "invisible mosaic" (i.e. how much less important are fires prior to the most recent). Alternatively, 30m resolution surfaces used in Steel et al. are available [at a link] for the forested watersheds ($>=$ 50% forest cover) of the western United States. These surfaces use equally weighted fire traits and a importance decay of 0.5 (recent fires receive twice the weight as the previous fire).  
 
-*Demo: for each Yosemite-intersecting watershed we will build fire trait surfaces for frequency, seasonality, severity and patch size of each watershed.*  
+*Demo: for each watershed whose centroid is within Yosemite we will build fire trait surfaces for frequency, seasonality, severity and patch size of each watershed. Code below can be run for all (~1hr run time) or you can skip this block and read in pre-calculated layers in step #3 below.*  
 
 
 ```{r eval = F}
@@ -67,7 +67,8 @@ source("code/season_surface.R")
 source("code/sev_surface.R")
 source("code/patch_surface.R")
 
-## Frequency calculation (takes about 30 seconds)
+
+## Frequency calculation (takes about 40 seconds)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -82,7 +83,9 @@ for (i in 1:nrow(hucs)) {
                 out_dir = "data/spatial/yose_fri") #path to hold output rasters
 }
 
-## Seasonality calculation (takes about 20 seconds)
+
+
+## Seasonality calculation (takes about 25 seconds)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -95,6 +98,7 @@ for (i in 1:nrow(hucs)) {
                    decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                    out_dir = "data/spatial/yose_sea") #path to hold output rasters
 }
+
 
 ## Severity and patch surface functions are much slower, consider parallel processing
 ## if running for large or many landscapes
@@ -112,7 +116,9 @@ for (i in 1:nrow(hucs)) {
                 out_dir = "data/spatial/yose_sev") #path to hold output rasters
 }
 
-## Patch calculation (takes about 1.4 hrs)
+
+
+## Patch calculation (takes about 1.1 hrs)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -125,16 +131,25 @@ for (i in 1:nrow(hucs)) {
                   decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                   out_dir = "data/spatial/yose_pat") #path to hold output rasters
 }
+
+
 ```
+
+
+*For illustration, here is what the four surfaces look like for the Upper-Merced watershed, with non-vegetated areas masked out.*  
+
+![](../figures/ex2_surfaces.png)  
+
 
 
 ## 3 Calculate pyrodviersity from surfaces  
 
 This can be done for a full landscape (e.g. a watershed) or buffered around sample points. Here I demonstrate this for watersheds and will add a sample point example at a later date.  
 
-```{r}
+```{r, eval = F}
 
 ## Calculate pyrodviersity for each watershed
+## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {
   huc <- hucs[i,]
   id <- as.data.frame(huc)[1,"HUC10"]
@@ -171,15 +186,20 @@ return(d)
   bind_rows()
 
 write.csv(pd, "data/yose_pyrodiv.csv", row.names = F)
+```
 
-hucs2 <- cbind(hucs, pd)
+```{r}
+pd <- read.csv("data/yose_pyrodiv.csv")
+
+hucs2 <- bind_cols(hucs, pd)
 
 ggplot() +
   geom_sf(data = hucs2, aes(fill = FDis), color = NA) +
       scale_fill_continuous_sequential(palette = "Heat",
                                      name = "Pyrodiversity") +
-  geom_sf(data = yose, fill = NA, color = "darkgreen") +
+  geom_sf(data = yose, fill = NA, color = "darkgreen", size = 1.25) +
   theme_void()
+
 ```
 
 

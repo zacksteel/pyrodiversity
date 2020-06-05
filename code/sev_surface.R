@@ -29,9 +29,9 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     
     ## Pull in severity raster to use as template
     r_template <- raster("data/spatial/CBI_template.tif")
-    noburn_r <- raster(landscape, resolution = res(r_template), vals = 0) %>% 
+    noburn_r <- as_Spatial(landscape) %>% 
+      raster(resolution = res(r_template), vals = 0) %>% 
       mask(landscape)
-    crs(noburn_r) <- crs(r_template)
 
     writeRaster(noburn_r, filename = fn_r, overwrite = T)
     
@@ -60,8 +60,8 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     })
     
     ## Create a landscape-wide empty raster 
-    land_r <- raster(landscape, resolution = res(rasters[[1]]), vals = NA)
-    crs(land_r) <- crs(rasters[[1]])
+    land_r <- as_Spatial(landscape) %>% 
+      raster(resolution = res(rasters[[1]]), vals = NA)
     
     ## get vector of burn years
     years <- pull(fires, {{fire_years}}) %>%

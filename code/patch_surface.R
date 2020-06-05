@@ -40,9 +40,9 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   
   ## Create a landscape-wide empty raster 
   #### for some reason crs isn't carrying over automatically anymore (R upgrade?)
-  land_r <- raster(land_buf, resolution = res(r_template), vals = NA) %>% 
+  land_r <- as_Spatial(land_buf) %>% 
+    raster(resolution = res(r_template), vals = NA) %>% 
     mask(land_buf)
-  crs(land_r) <- crs(r_template)
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {

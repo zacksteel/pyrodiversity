@@ -33,11 +33,7 @@ pyrodiv_calc <- function(
       as.data.frame()
     names(ctab) <- c(names(ts), "Freq")
   } else {
-    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) #%>% 
-      ## drop row with all NA traits
-      # mutate(dropna = rowSums(dplyr::select(., contains("layer")), na.rm = T)) %>% 
-      # filter(dropna > 0) %>% 
-      # dplyr::select(-dropna)
+    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) 
   }
   
   ## drop all NA row
@@ -62,7 +58,7 @@ pyrodiv_calc <- function(
   cmean <- colMeans(ctab, na.rm = T)
   add <- cmean + (cmean + 0.0001/1000)
   add['Freq'] <- 1
-  
+
   ctab <- rbind(ctab, add)
   
   # add "species" names
@@ -80,7 +76,8 @@ pyrodiv_calc <- function(
               calc.FRic = F, 
               calc.FGR = F,
               calc.CWM = F,
-              calc.FDiv = F)
+              calc.FDiv = F,
+              messages = F)
   
   ## add to adataframe
   d <- as.data.frame(div)
