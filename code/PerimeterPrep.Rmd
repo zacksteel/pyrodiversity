@@ -1,0 +1,43 @@
+---
+title: "Fire Perimeter Preparation"
+author: "Zack Steel"
+output: rmarkdown::github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+knitr::opts_knit$set(root.dir = "..")
+library(tidyverse)
+library(sf)
+library(knitr)
+library(mapview)
+```
+
+This document gives an example of how to prepare fire perimeters to be used in [Google Earth Engine](https://tinyurl.com/CBImodel) with the [Parks et al. 2019](https://www.mdpi.com/2072-4292/11/14/1735) model to estimate fire severity. I will use California's [FRAP](https://frap.fire.ca.gov/mapping/gis-data/) interagency fire perimeter database which includes fires down to 10 acres in size (4 ha) back to 1950. I'll focus on just the Headwaters of the Merced River watershed of Yosemite.  
+
+
+```{r}
+## Read in CA perimeters
+pers <- read_sf("data/spatial/fire19_1.gdb") %>% 
+  st_cast("MULTIPOLYGON") #necessary to avoid problems with gdb format
+
+## Get Merced HUC10
+huc <- read_sf("data/spatial/yose_sheds.shp") %>% 
+  filter(Name == "Headwaters Merced River") %>% 
+  ## match coordinate system
+  st_transform(crs = st_crs(pers))
+
+## Limit extent and to fires after 1984
+keep <- st_intersects(pers, huc) %>% 
+  apply(1, any)
+pers1 <- pers[keep,]
+
+mapview(pers1)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
