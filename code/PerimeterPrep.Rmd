@@ -17,27 +17,46 @@ This document gives an example of how to prepare fire perimeters to be used in [
 
 
 ```{r}
-## Read in CA perimeters
-pers <- read_sf("data/spatial/fire19_1.gdb") %>% 
-  st_cast("MULTIPOLYGON") #necessary to avoid problems with gdb format
+## Read in some perimeters - pre-filtered somewhat
+pers <- read_sf("data/spatial/firep.shp") %>% 
+  mutate(Fire_Year = as.integer(YEAR_)) %>% 
+  dplyr::select(FIRE_NAME, FIRE_NUM, Fire_Year, ALARM_DATE, CONT_DATE)
 
 ## Get Merced HUC10
 huc <- read_sf("data/spatial/yose_sheds.shp") %>% 
   filter(Name == "Headwaters Merced River") %>% 
   ## match coordinate system
-  st_transform(crs = st_crs(pers))
+  st_transform(crs = st_crs(pers)) %>% 
+  dplyr::select(Name)
 
 ## Limit extent and to fires after 1984
 keep <- st_intersects(pers, huc) %>% 
   apply(1, any)
 pers1 <- pers[keep,]
 
-mapview(pers1)
+## take a look
+mapview(huc, col.regions = "darkgreen") + mapview(pers1)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+Make the perimaters match what the Park's model expects.  
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+```{r}
+## Make names match Parks model
+out <- mutate(pers1,
+              state = "CA")
+## Region-specific cut-offs see Parks et al. 2019
+dates <- data.frame(
+  state = c("AZ", "CA", "CO", "ID", "KS", "MT", "ND", "NE", "NM", "NV", 
+            "OK", "OR", "SD", "TX", "UT", "WA", "WY"),
+  Start_Day = as.integer(c(91, 152, 152, 152, 121, 152, 152, 121, 91, 91,
+                121, 152, 152, 121, 152, 152, 152)),
+  End_Day = as.integer(c(181, 258, 258, 258, 212, 258, 258, 212, 181, 181,
+              212, 218, 218, 212, 218, 218, 218)))
+out2 <- merge(out, dates, by = "state") %>% 
+  mutate(ID = 1:n()) %>% 
+  dplyr::select(ID, Fire_Name = FIRE_NAME, Fire_ID = FIRE_NUM, Fire_Year, Start_Day = ALARM_DATE, End_Day = CONT_DATE)
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+st_write(out2, "data/spatial/gee_pers.shp")
+```
+
 
