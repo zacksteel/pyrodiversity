@@ -5,18 +5,9 @@ author: "Zack Steel"
 output: rmarkdown::github_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include = F}
 knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 knitr::opts_knit$set(root.dir = "..")
-library(tidyverse)
-library(sf)
-library(raster)
-library(stars)
-library(fasterize)
-library(lwgeom)
-library(FD)
-library(colorspace)
-library(knitr)
 ```
 
 # Quantifying Pyrodiversity  
@@ -37,6 +28,16 @@ This fire history data must include a fire perimeter shapefile with ignition dat
 
 
 ```{r}
+library(tidyverse)
+library(sf)
+library(raster)
+library(stars)
+library(fasterize)
+library(lwgeom)
+library(FD)
+library(colorspace)
+library(knitr)
+
 ## read in shapefiles
 yose <- read_sf("data/spatial/yosemite.shp")
 hucs <- read_sf("data/spatial/yose_sheds.shp")

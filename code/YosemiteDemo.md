@@ -21,7 +21,7 @@ code to their own fires and landscapes of interested. To do so you will
 need continous composite burn index (CBI) rasters calculated using the
 Parks model or another validated burn severity model.
 
-There are three primary steps to calculating pyrodviersity: 1) Compile
+There are three primary steps to calculating pyrodiversity: 1) Compile
 comprehensive fire histories for an area of interest. 2) Generate fire
 trait surfaces (rasters) using these fire history data. 3) Sample from
 fire trait surfaces to calculate pyrodiversity for points or areas of
@@ -36,7 +36,8 @@ the [Parks model](https://www.mdpi.com/2072-4292/11/14/1735) to estimate
 severity in forest of the western United States. Other regional models
 exist in areas with more limited spatial extent but more comprehensive
 histories. For example, the [Koontz model](https://osf.io/ke4qj/#!)
-includes nearly all California fires of at least 4 hectares.
+includes California fires of at least 4 hectares that burned at least
+partially in mixed conifer forests.
 
 This fire history data must include a fire perimeter shapefile with
 ignition date (Julian day), ignition year and unique fire ID, as well as
@@ -48,6 +49,16 @@ are within Yosemite (green polygon) and 64 fires (semi-transparent grey
 polygons) that intersect those watersheds between 1985 and 2018.*
 
 ``` r
+library(tidyverse)
+library(sf)
+library(raster)
+library(stars)
+library(fasterize)
+library(lwgeom)
+library(FD)
+library(colorspace)
+library(knitr)
+
 ## read in shapefiles
 yose <- read_sf("data/spatial/yosemite.shp")
 hucs <- read_sf("data/spatial/yose_sheds.shp")
@@ -90,8 +101,8 @@ fire).
 
 *Demo: for each watershed whose centroid is within Yosemite we will
 build fire trait surfaces for frequency, seasonality, severity and patch
-size of each watershed. Code below can be run for all (\~1hr run time)
-or you can skip this block and read in pre-calculated layers in step \#3
+size of each watershed. Code below can be run for all (~1hr run time) or
+you can skip this block and read in pre-calculated layers in step \#3
 below.*
 
 ``` r

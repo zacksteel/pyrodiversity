@@ -9,10 +9,13 @@ estimate fire severity. I will use California’s
 [FRAP](https://frap.fire.ca.gov/mapping/gis-data/) interagency fire
 perimeter database which includes fires down to 10 acres in size (4 ha)
 back to 1950 (although we are only using fires back to 1985). I’ll focus
-on just the Headwaters of the Merced River watershed of
-Yosemite.
+on just the Headwaters of the Merced River watershed of Yosemite.
 
 ``` r
+library(tidyverse)
+library(sf)
+# library(mapview)
+
 ## Read in some perimeters - pre-filtered somewhat (southern Sierra fires; >1984)
 pers <- read_sf("data/spatial/firep.shp") %>% 
   mutate(Fire_Year = as.integer(YEAR_)) %>% 
@@ -25,12 +28,13 @@ huc <- read_sf("data/spatial/yose_sheds.shp") %>%
   st_transform(crs = st_crs(pers)) %>% 
   dplyr::select(Name)
 
-## Limit extent and to fires after 1984
+## Limit extent to the Upper Merced
 keep <- st_intersects(pers, huc) %>% 
   apply(1, any)
 pers1 <- pers[keep,]
 
 ## take a look
+# mapview(huc, col.regions = "darkgreen") + mapview(pers1)
 ggplot() +
   geom_sf(data = huc, fill = "darkgreen", color = NA, alpha = 0.3) +
   geom_sf(data = pers1, fill = "grey30", color = NA, alpha = 0.4) +
@@ -39,12 +43,8 @@ ggplot() +
 
 ![](PerimeterPrep_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
 
-``` r
-# mapview(huc, col.regions = "darkgreen") + mapview(pers1)
-```
-
-Make the perimaters match what the Park’s model expects. Make sure
-Fire\_IDs are unique.
+Make the perimeter attributes match what the Park’s model expects. Make
+sure Fire\_IDs are unique.
 
 ``` r
 ## Make names match Parks model
