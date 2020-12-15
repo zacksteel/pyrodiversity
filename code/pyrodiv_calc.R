@@ -3,6 +3,8 @@
 
 pyrodiv_calc <- function(
   traits, #vector of paths to trait rasters or rasters themselves
+  frich = F, #logical, whether to also calculate function richness
+  pca_axes = "max", #number of PC dimensions to use when calculating FRic
   mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
 ) {
   library(tidyverse)
@@ -56,7 +58,7 @@ pyrodiv_calc <- function(
   ## when only one value and NA (e.g. season layer), throws an error
   ## adding a single fudge cell works around this without inflating dispersion
   cmean <- colMeans(ctab, na.rm = T)
-  add <- cmean + (cmean + 0.0001/1000)
+  add <- cmean + cmean/1000
   add['Freq'] <- 1
 
   ctab <- rbind(ctab, add)
@@ -73,11 +75,15 @@ pyrodiv_calc <- function(
   ## run diversity function
   div <- dbFD(traits, abun, stand.x = T, 
               corr = "cailliez",
-              calc.FRic = F, 
+              calc.FRic = frich, 
+              m = pca_axes,
               calc.FGR = F,
               calc.CWM = F,
               calc.FDiv = F,
               messages = F)
+  
+  ## Also calculate Simpsons
+  div$simpson <- diversity(abun, index = "simpson")
   
   ## add to adataframe
   d <- as.data.frame(div)

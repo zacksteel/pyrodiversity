@@ -1,0 +1,429 @@
+---
+title: "FDis_FRic_compare"
+author: "Zack Steel"
+# date: "5/31/2020"
+output: rmarkdown::github_document
+---
+
+```{r setup, include = F}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+knitr::opts_knit$set(root.dir = "..")
+```
+
+Comparing functional dispersion and functional richness (aka Minimum convex hull) as measures of pyrodiversity.  
+
+I'm going to stick with Yosemite watersheds as with the other demos in this repository.  
+
+
+```{r}
+library(tidyverse)
+library(sf)
+library(raster)
+library(stars)
+library(fasterize)
+library(lwgeom)
+library(FD)
+library(colorspace)
+library(knitr)
+library(ggdist)
+
+## read in shapefiles
+yose <- read_sf("data/spatial/yosemite.shp")
+hucs <- read_sf("data/spatial/yose_sheds.shp")
+yose_fires <- read_sf("data/spatial/yose_mtbs.shp") 
+
+ggplot() +
+  geom_sf(data = yose, fill = "darkgreen", color = NA, alpha = 0.3) +
+  geom_sf(data = hucs, fill = NA) +
+  geom_sf(data = yose_fires, fill = "grey30", color = NA, alpha = 0.4) +
+  theme_void()
+
+as.data.frame(yose_fires) %>% 
+  dplyr::select(Fire_ID, Fire_Name, Year, jday) %>% 
+  head()
+```
+
+Let's calculate functional diversity/pyrodiversity first using individual traits.  
+
+I get an error when trying to calculate convex hull for all four traits. maybe too much dimensionality? May need to set the number of PCoA axes to allow, becuase "species" can be very high, the default can have many axes. m = 4 might work.
+
+Could also calculate Simpson's diversity using Vegan's diversity() function with some additional code.
+
+```{r, eval = F}
+source("code/pyrodiv_calc.R")
+library(tictoc)
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+    } 
+
+## get rasters
+tic()
+d <- lapply(1:nrow(hucs), function(i) {
+  huc <- hucs[i,]
+  id <- as.data.frame(huc)[1,"HUC10"]
+  
+  ## bring in trait rasters and adjust precision   
+  ## E.g. Frequency - 1 year increments; Patch size - 1 log HA increments; 
+  ## Severity - 0.5 CBI increments; Seasonality - 0.1 increments.
+
+  fri_r <- paste0("data/spatial/yose_fri/fri_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 0)
+  sea_r <- paste0("data/spatial/yose_sea/sea_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 1)
+  sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
+    raster() %>% 
+    mround(base = 5, digits = 1)
+  pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 0)
+  
+  ## Bring in mask raster
+  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
+    raster()
+  
+  ## Run the function for each individual trait
+  fri_d <- pyrodiv_calc(traits = fri_r,
+                        frich = T,
+                        mask = flam_r) %>% 
+    mutate(huc = id,
+           trait = "fri")
+  sea_d <- pyrodiv_calc(traits = sea_r,
+                        frich = T,
+                        mask = flam_r) %>% 
+    mutate(huc = id,
+           trait = "sea")
+  sev_d <- pyrodiv_calc(traits = sev_r,
+                        frich = T,
+                        mask = flam_r) %>% 
+    mutate(huc = id,
+           trait = "sev")
+  pat_d <- pyrodiv_calc(traits = pat_r,
+                        frich = T,
+                        mask = flam_r) %>% 
+    mutate(huc = id,
+           trait = "pat")
+  all_d <- pyrodiv_calc(traits = c(pat_r, sea_r, sev_r, pat_r),
+                        frich = T,
+                        pca_axes = 4,
+                        mask = flam_r) %>% 
+    mutate(huc = id,
+           trait = "all")
+  
+  ## put together and return
+  bind_rows(fri_d, sea_d, sev_d, pat_d, all_d) %>% 
+    return()
+}) %>% 
+  bind_rows()
+toc()
+
+write.csv(d, "data/yose_trait_div.csv", row.names = F)
+```
+
+Let's take a look at what these look like.  
+
+```{r}
+library(GGally)
+d <- read.csv("data/yose_trait_div.csv")
+## Scale everything for easier comparison
+d2 <- dplyr::select(d, huc, FRic, FEve, FDis, RaoQ, simpson, trait) %>% 
+  group_by(trait) %>% 
+  mutate(FRic = (FRic - mean(FRic, na.rm = T)) / sd(FRic, na.rm = T),
+         FEve = (FEve - mean(FEve, na.rm = T)) / sd(FEve, na.rm = T),
+         FDis = (FDis - mean(FDis, na.rm = T)) / sd(FDis, na.rm = T),
+         RaoQ = (RaoQ - mean(RaoQ, na.rm = T)) / sd(RaoQ, na.rm = T),
+         simpson = (simpson - mean(simpson, na.rm = T)) / sd(simpson, na.rm = T)) %>% 
+  pivot_longer(cols = FRic:simpson, values_to = "value", names_to = "metric")
+
+ggplot(d2, aes(x = metric, y = value, fill = metric)) +
+  facet_grid(~trait, scales = "free") +
+  geom_violin(na.rm = TRUE)
+
+## Add in huc area and look at correlations
+d3 <- dplyr::select(hucs, huc = HUC10, sqkm = AreaSqKm) %>% 
+  merge(d) %>% 
+  st_drop_geometry()
+
+p <- filter(d3, trait == "all") %>% 
+  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  ggpairs() +
+  ggtitle("Four-trait index")
+p2 <- filter(d3, trait == "fri") %>% 
+  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  ggpairs() +
+  ggtitle("Fire Frequency")
+p3 <- filter(d3, trait == "sea") %>% 
+  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  ggpairs() +
+  ggtitle("Seasonality")
+p4 <- filter(d3, trait == "pat") %>% 
+  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  ggpairs() +
+  ggtitle("Patch Size")
+p5 <- filter(d3, trait == "sev") %>% 
+  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  ggpairs() +
+  ggtitle("Severity")
+
+save_plot("figures/core_all.png", p,
+          base_height = 6, base_width = 8)
+save_plot("figures/core_fri.png", p2,
+          base_height = 6, base_width = 8)
+save_plot("figures/core_sea.png", p3,
+          base_height = 6, base_width = 8)
+save_plot("figures/core_pat.png", p4,
+          base_height = 6, base_width = 8)
+save_plot("figures/core_sev.png", p5,
+          base_height = 6, base_width = 8)
+```
+
+Look at how the different diversity metrics handle different resolutions.  
+
+```{r}
+source("code/pyrodiv_calc.R")
+library(tictoc)
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+
+## get rasters
+tic()
+d_res <- lapply(1:nrow(hucs), function(i) {
+  huc <- hucs[i,]
+  id <- as.data.frame(huc)[1,"HUC10"]
+  print(id)
+  
+  ## Bring in mask raster; do first here
+  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
+    raster()
+  
+  ## bring in trait rasters and adjust precision   
+  ## E.g. Frequency - 1 year increments; Patch size - 1 log HA increments; 
+  ## Severity - 0.5 CBI increments; Seasonality - 0.1 increments.
+
+  fri_r <- paste0("data/spatial/yose_fri/fri_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 0) 
+  sea_r <- paste0("data/spatial/yose_sea/sea_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 1) 
+  sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
+    raster() %>% 
+    mround(base = 5, digits = 1) 
+  pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>% 
+    raster() %>% 
+    round(digits = 0) 
+  
+  ts <- stack(fri_r, sea_r, sev_r, pat_r)
+  names(ts) <- c("fri", "sea", "sev", "pat")
+
+    ## projection mask if needed
+    if(!(identical(crs(ts), crs(flam_r)) & identical(extent(ts), extent(flam_r)))) {
+      flam_r <- suppressWarnings(projectRaster(from = flam_r, crs = crs(ts), res = res(ts), 
+                             method = "ngb", alignOnly = F)) %>% 
+        ## necessary to resample to align extents
+        resample(y = ts, method = "ngb")
+    }
+  ## run mask
+  ts <- mask(ts, flam_r) 
+
+  print(1)
+  ## run at full resolution
+  all1 <- pyrodiv_calc(traits = ts,
+                        frich = T,
+                        pca_axes = 4) %>% 
+    mutate(fct = 1)
+  
+  ## run with different aggregations
+  print(2)
+  ts2 <- aggregate(ts, 2, mean)
+  ts2$fri <- round(ts2$fri, 0)
+  ts2$sea <- round(ts2$sea, 1)
+  ts2$sev <- mround(ts2$sev, base = 5, digits = 1)
+  ts2$pat <- round(ts2$pat, 0)
+  
+  #### Need to round everything again after aggregating
+  
+  all2 <- pyrodiv_calc(traits = ts2,
+                        frich = T,
+                        pca_axes = 4) %>% 
+    mutate(fct = 2)
+  
+  print(4)
+  ts4 <- aggregate(ts, 4, mean)
+  ts4$fri <- round(ts4$fri, 0)
+  ts4$sea <- round(ts4$sea, 1)
+  ts4$sev <- mround(ts4$sev, base = 5, digits = 1)
+  ts4$pat <- round(ts4$pat, 0)
+  
+  all4 <- pyrodiv_calc(traits = ts4,
+                        frich = T,
+                        pca_axes = 4) %>% 
+    mutate(fct = 4)
+  
+  print(8)
+  ts8 <- aggregate(ts, 8, mean)
+  ts8$fri <- round(ts8$fri, 0)
+  ts8$sea <- round(ts8$sea, 1)
+  ts8$sev <- mround(ts8$sev, base = 5, digits = 1)
+  ts8$pat <- round(ts8$pat, 0)
+  
+  all8 <- pyrodiv_calc(traits = ts8,
+                        frich = T,
+                        pca_axes = 4) %>% 
+    mutate(fct = 8)
+  
+  print(16)
+  ts16 <- aggregate(ts, 16, mean)
+  ts16$fri <- round(ts16$fri, 0)
+  ts16$sea <- round(ts16$sea, 1)
+  ts16$sev <- mround(ts16$sev, base = 5, digits = 1)
+  ts16$pat <- round(ts16$pat, 0)
+  
+  all16 <- pyrodiv_calc(traits = ts16,
+                        frich = T,
+                        pca_axes = 4) %>% 
+    mutate(fct = 16)
+  
+  ## put together and return
+  bind_rows(all1, all2, all4, all8, all16) %>% 
+    mutate(id = id) %>% 
+    return()
+}) %>% 
+  bind_rows()
+toc()
+
+write.csv(d_res, "data/yose_pd_vres.csv", row.names = F)
+
+
+## set up aggregation
+# res <- expand.grid(id = hucs$HUC10, agg = c(1:2)) %>% 
+#   tibble() %>% 
+#   
+#   ## get raster paths
+#   mutate(id = as.character(id),
+#          flam = paste0("data/spatial/yose_flam/flam_", id, ".tif"),
+#          fri = paste0("data/spatial/yose_flam/fri_", id, ".tif"),
+#          sea = paste0("data/spatial/yose_flam/sea_", id, ".tif"),
+#          pat = paste0("data/spatial/yose_flam/pat_", id, ".tif"),
+#          sev = paste0("data/spatial/yose_flam/sev_", id, ".tif")) %>% 
+#   nest(flam:sev) %>% 
+#   mutate(rasters = purrr::map(data, ~sapply(.x, stack)))
+#   ## aggregate rasters
+#   mutate(flam_r = purrr::map2(flam, agg, ~aggregate(raster(.x), 
+#                                                     fact = .y, fun = mean)),
+#          fri_r = purrr::map2(fri, agg, ~aggregate(raster(.x),
+#                                                     fact = .y, fun = mean)),
+#          sea_r = purrr::map2(sea, agg, ~aggregate(raster(.x), 
+#                                                     fact = .y, fun = mean)),
+#          pat_r = purrr::map2(pat, agg, ~aggregate(raster(.x), 
+#                                                     fact = .y, fun = mean)),
+#          sev_r = purrr::map2(sev, agg, ~aggregate(raster(.x), 
+#                                                     fact = .y, fun = mean)))
+# 
+# ## calculate pyrodiversity
+# res2 <- nest(res)
+```
+
+```{r}
+library(cowplot)
+ggplot(d_res, aes(x = fct, y = FDis, group = id)) +
+  geom_point() +
+  geom_line()
+
+ggplot(d_res, aes(x = fct, y = FRic, group = id)) +
+  geom_point() +
+  geom_line()
+
+p <- dplyr::select(d_res, id, FRic, FDis, simpson, fct) %>% 
+  mutate(res = (fct * 30)^2 / 10000) %>% 
+  pivot_longer(cols = FRic:simpson, names_to = "metric", values_to = "value") %>% 
+  ggplot(aes(x = res, y = value, group = id)) +
+  facet_grid(row = vars(metric), scales = "free") +
+  geom_point() +
+  geom_line() +
+  scale_x_log10() +
+  xlab("Cell size (hectares)") + ylab("Pyrodiversity") +
+  theme_bw() 
+
+save_plot(filename = "figures/vary_scales.png", p,
+          base_width = 6, base_height = 6, units = "in")
+```
+
+
+Look at how measures vary depending on species definition/cut-offs. Here just varying how severity is defined and using the Upper Merced.  
+
+Having problems with varying the cutoffs...
+
+
+```{r}
+## get rasters
+tic()
+
+dd <- lapply(1:nrow(hucs), function(i) {
+  huc <- hucs[i,]
+  id <- as.data.frame(huc)[1,"HUC10"]
+  
+  ## bring in trait rasters and adjust precision   
+
+  # fri_r <- paste0("data/spatial/yose_fri/fri_", id, ".tif") %>%
+  #   raster() %>%
+  #   round(digits = 0)
+  # sea_r <- paste0("data/spatial/yose_sea/sea_", id, ".tif") %>%
+  #   raster() %>%
+  #   round(digits = 1)
+  # pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>%
+  #   raster() %>%
+  #   round(digits = 0)
+  
+  ## Bring in mask raster
+  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
+    raster()
+  
+    ## Cut-offs = ordered classes when unburned is an additional class. Run for 4 through 10 classes
+  sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
+    raster()
+  
+  sev_l <- tibble(huc = id, classes = seq(4, 10)) %>% 
+    mutate(raster = purrr::map(classes, ~{sev_r %>% 
+    cut(breaks = seq(0,3, length.out = .x),
+        include.lowest = T)
+    }),
+    ## put back on cbi scale (0-3)
+    raster2 = purrr::map(raster, ~(.x-1) / cellStats((.x-1), max) * cellStats(sev_r, max)),
+    ## Calculate pyrodiersity metrics
+    sev_d = purrr::map(raster2, ~pyrodiv_calc(traits = .x,
+                                             frich = F,
+                                             mask = flam_r) %>% 
+                         mutate(trait = "sev")))
+  
+  
+  ## pull out the relevant data
+  sev_d <- unnest(sev_l, cols = sev_d) %>% 
+    dplyr::select(-raster, -raster2)
+
+  
+  # all_d <- pyrodiv_calc(traits = c(pat_r, sea_r, sev_r, pat_r),
+  #                       frich = T,
+  #                       pca_axes = 4,
+  #                       mask = flam_r) %>% 
+  #   mutate(huc = id,
+  #          trait = "all") %>% 
+  #   dplyr::select(-raster)
+  # 
+  # ## put together and return
+  # bind_rows(fri_d, sea_d, sev_d, pat_d, all_d) %>% 
+  #   return()
+}) %>% 
+  bind_rows()
+toc()
+
+filter(dd, trait == "sev") %>% 
+  dplyr::select(classes, FEve, FDis, RaoQ, simpson) %>% 
+  ggpairs()
+filter(dd, huc == "1804000801") %>% 
+  dplyr::select(classes, FEve, FDis, RaoQ, simpson) %>% 
+  ggpairs()
+```
+
