@@ -8,7 +8,8 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
                         start_year, # Year prior to start of dataset (for landsat: 1983)
                         end_year, # Year after end of dataset (for MTBS: 2018)
                         decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                        out_dir #path to hold output rasters
+                        out_dir, #path to hold output rasters
+                        raster_template = "data/spatial/CBI_template.tif"
   ) {
   library(tidyverse)
   library(sf)
@@ -19,13 +20,17 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   ## filename of output
   fn_r <- paste0(out_dir, "/fri_", as.data.frame(landscape)[1,ID], ".tif")
   
+  ## Pull in severity raster to use as template
+  r_template <- raster(raster_template)
+  
+  ## Conform CRS of features to the template
+  landscape <- st_transform(landscape, crs = st_crs(r_template))
+  fires <- st_transform(fires, crs = st_crs(r_template))
+  
   ## Which fires intersect with the landscape of interest?
   keep <- suppressMessages(st_intersects(fires, landscape)) %>%
     apply(1, any) 
   fires <- fires[keep,]
-  
-  ## Pull in severity raster to use as template
-  r_template <- raster("data/spatial/CBI_template.tif")
 
   land_r <- as_Spatial(landscape) %>% 
     raster(resolution = res(r_template), vals = 1) %>% 

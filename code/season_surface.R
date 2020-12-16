@@ -7,7 +7,8 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
                            fire_years = "Year", # label of the fire year column
                            fire_day = "jday", # label of the fire ignition Julian date column
                            decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/2 of the previous
-                           out_dir #path to hold output rasters
+                           out_dir, #path to hold output rasters
+                           raster_template = "data/spatial/CBI_template.tif"
                         ) 
   {
   library(tidyverse)
@@ -19,13 +20,18 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
   ## filename of output
   fn_r <- paste0(out_dir, "/sea_", as.data.frame(landscape)[1,ID], ".tif")
   
+  ## Pull in severity raster to use as template
+  r_template <- raster(raster_template)
+  
+  ## Conform CRS of features to the template
+  landscape <- st_transform(landscape, crs = st_crs(r_template))
+  fires <- st_transform(fires, crs = st_crs(r_template))
+  
   ## Which fires intersect with the landscape of interest?
   keep <- suppressMessages(st_intersects(fires, landscape)) %>%
     apply(1, any) 
   fires <- fires[keep,]
   
-  ## Pull in severity raster to use as template
-  r_template <- raster("data/spatial/CBI_template.tif")
   noburn_r <- as_Spatial(landscape) %>% 
     raster(resolution = res(r_template), vals = NA)
   

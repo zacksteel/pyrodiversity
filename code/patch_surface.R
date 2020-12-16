@@ -9,13 +9,21 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
                           decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/4 of the previous
                           buffer_landscape = 0, # Extension of landscape (in meters) if needed for point calculations near edges
                           ## Buffer could also be used to reduce edge effects on patch area calculations
-                          out_dir #path to hold output rasters
+                          out_dir, #path to hold output rasters
+                          raster_template = "data/spatial/CBI_template.tif"
                      ) {
   library(raster)
   library(stars)
   library(tidyverse)
   library(sf)
   library(fasterize)
+  
+  ## Pull in severity raster to use as template
+  r_template <- raster(raster_template)
+  
+  ## Conform CRS of features to the template
+  landscape <- st_transform(landscape, crs = st_crs(r_template))
+  fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Simplify landscape if needed; Created a buffered landscape
   land_buf <- st_union(landscape) %>%
@@ -34,9 +42,6 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   keep <- suppressMessages(st_intersects(fires, land_buf)) %>%
     apply(1, any) 
   fires <- fires[keep,] 
-  
-  ## Pull in severity raster to use as template
-  r_template <- raster("data/spatial/CBI_template.tif")
   
   ## Create a landscape-wide empty raster 
   #### for some reason crs isn't carrying over automatically anymore (R upgrade?)
@@ -114,7 +119,7 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
       fc <- st_as_stars(rc) %>% 
         st_as_sf() %>% 
         group_by(layer) %>%
-        summarize()
+        summarize(.groups = "drop_last")
       
       ## convert from multi to single polygons
       fc_polys <- st_cast(fc, "MULTIPOLYGON", warn = F) %>% # sometimes necessary but not always
