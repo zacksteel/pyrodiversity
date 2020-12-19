@@ -45,7 +45,7 @@ as.data.frame(yose_fires) %>%
 
 Let's calculate functional diversity/pyrodiversity first using individual traits.  
 
-I get an error when trying to calculate convex hull for all four traits. maybe too much dimensionality? May need to set the number of PCoA axes to allow, becuase "species" can be very high, the default can have many axes. m = 4 might work.
+To calculate convex hull for all four traits need to set the number of PCoA axes to allow, becuase "species" can be very high, the default can have many axes. m = 4 might work.
 
 Could also calculate Simpson's diversity using Vegan's diversity() function with some additional code.
 
