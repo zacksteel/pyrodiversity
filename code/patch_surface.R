@@ -111,7 +111,7 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
       
       ## Convert to features with standard cut-offs from Miller and Thode 2007
       breaks <- c(0, .1, 1.25, 2.25, 3)
-      rc <- cut(m, breaks = breaks)
+      rc <- cut(m, breaks = breaks, include.lowest = T)
         ## Convert to vector
         ## stars version is about 3 times faster
         ## https://r-spatial.github.io/stars/articles/stars5.html

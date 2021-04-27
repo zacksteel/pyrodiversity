@@ -17,16 +17,20 @@ I'm going to stick with Yosemite watersheds as with the other demos in this repo
 
 ```{r}
 library(tidyverse)
-library(sf)
-library(raster)
-library(stars)
-library(fasterize)
-library(lwgeom)
-library(FD)
+# library(sf)
+# library(raster)
+# library(stars)
+# library(fasterize)
+# library(lwgeom)
+# library(FD)
 library(colorspace)
 library(knitr)
 library(ggdist)
+library(cowplot)
+library(GGally)
+```
 
+```{r, eval = F}
 ## read in shapefiles
 yose <- read_sf("data/spatial/yosemite.shp")
 hucs <- read_sf("data/spatial/yose_sheds.shp")
@@ -123,64 +127,88 @@ write.csv(d, "data/yose_trait_div.csv", row.names = F)
 
 Let's take a look at what these look like.  
 
-```{r}
-library(GGally)
-d <- read.csv("data/yose_trait_div.csv")
+```{r, eval = F}
+## Single trait diversity
+d <- read.csv("../pyrodiv/data/intermediate/huc10_covs/traits_expanded.csv")
+## Multi-trait diversity - just 30m res
+dm <- read.csv("../pyrodiv/data/intermediate/huc10_covs/pyrodiv_expanded.csv") %>% 
+  filter(fct == 1) %>% 
+  mutate(trait = "all")
+## Bring in huc info including flammable area
+hmeta <- read.csv("../pyrodiv/data/intermediate/huc10_covs/burn_area.csv") %>% 
+  dplyr::select(id = huc10, Area = flam_ha)
 ## Scale everything for easier comparison
-d2 <- dplyr::select(d, huc, FRic, FEve, FDis, RaoQ, simpson, trait) %>% 
-  group_by(trait) %>% 
-  mutate(FRic = (FRic - mean(FRic, na.rm = T)) / sd(FRic, na.rm = T),
-         FEve = (FEve - mean(FEve, na.rm = T)) / sd(FEve, na.rm = T),
-         FDis = (FDis - mean(FDis, na.rm = T)) / sd(FDis, na.rm = T),
-         RaoQ = (RaoQ - mean(RaoQ, na.rm = T)) / sd(RaoQ, na.rm = T),
-         simpson = (simpson - mean(simpson, na.rm = T)) / sd(simpson, na.rm = T)) %>% 
-  pivot_longer(cols = FRic:simpson, values_to = "value", names_to = "metric")
+# d2 <- dplyr::select(d, huc, FRic, FEve, FDis, RaoQ, simpson, trait) %>% 
+#   group_by(trait) %>% 
+#   mutate(FRic = (FRic - mean(FRic, na.rm = T)) / sd(FRic, na.rm = T),
+#          FEve = (FEve - mean(FEve, na.rm = T)) / sd(FEve, na.rm = T),
+#          FDis = (FDis - mean(FDis, na.rm = T)) / sd(FDis, na.rm = T),
+#          RaoQ = (RaoQ - mean(RaoQ, na.rm = T)) / sd(RaoQ, na.rm = T),
+#          simpson = (simpson - mean(simpson, na.rm = T)) / sd(simpson, na.rm = T)) %>% 
+#   pivot_longer(cols = FRic:simpson, values_to = "value", names_to = "metric")
 
-ggplot(d2, aes(x = metric, y = value, fill = metric)) +
-  facet_grid(~trait, scales = "free") +
-  geom_violin(na.rm = TRUE)
+# ggplot(d2, aes(x = metric, y = value, fill = metric)) +
+#   facet_grid(~trait, scales = "free") +
+#   geom_violin(na.rm = TRUE)
 
 ## Add in huc area and look at correlations
-d3 <- dplyr::select(hucs, huc = HUC10, sqkm = AreaSqKm) %>% 
-  merge(d) %>% 
-  st_drop_geometry()
+d3 <- bind_rows(d, dm) %>% 
+  merge(hmeta, by = "id") %>% 
+  dplyr::select(FRic, FDis, Simpson = simpson, Area, trait) %>% 
+  ## Scale everything for easier comparison
+  mutate(FRic_l = log(FRic + 0.01),
+         FDis_l = log(FDis + 0.01),
+         area_l = log(Area))
 
+## FRic has a real long right-hand tail with multi-trait
 p <- filter(d3, trait == "all") %>% 
-  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  dplyr::select(FRic_l, FDis, Simpson, Area) %>% 
   ggpairs() +
+  theme_bw() +
+  # theme(text = element_text(size = 14)) +
   ggtitle("Four-trait index")
 p2 <- filter(d3, trait == "fri") %>% 
-  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  dplyr::select(FRic, FDis, Simpson, Area) %>% 
   ggpairs() +
+  theme_bw() +
   ggtitle("Fire Frequency")
 p3 <- filter(d3, trait == "sea") %>% 
-  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  dplyr::select(FRic, FDis, Simpson, Area) %>% 
   ggpairs() +
+  theme_bw() +
   ggtitle("Seasonality")
 p4 <- filter(d3, trait == "pat") %>% 
-  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  dplyr::select(FRic, FDis, Simpson, Area) %>% 
   ggpairs() +
+  theme_bw() +
   ggtitle("Patch Size")
 p5 <- filter(d3, trait == "sev") %>% 
-  dplyr::select(FRic, FDis, simpson, sqkm) %>% 
+  dplyr::select(FRic, FDis, Simpson, Area) %>% 
   ggpairs() +
+  theme_bw() +
   ggtitle("Severity")
 
-save_plot("figures/core_all.png", p,
-          base_height = 6, base_width = 8)
-save_plot("figures/core_fri.png", p2,
-          base_height = 6, base_width = 8)
-save_plot("figures/core_sea.png", p3,
-          base_height = 6, base_width = 8)
-save_plot("figures/core_pat.png", p4,
-          base_height = 6, base_width = 8)
-save_plot("figures/core_sev.png", p5,
-          base_height = 6, base_width = 8)
+## How often do watersheds have the full range of severity?
+filter(d, trait == "sev") %>% 
+  mutate(FRic = round(FRic, 3),
+         full = ifelse(FRic == 3, 1, 0)) %>% 
+  summarise(prop_full = sum(full) / n())
+
+save_plot("figures/cor_all.png", p,
+          base_height = 4, base_width = 7)
+save_plot("figures/cor_fri.png", p2,
+          base_height = 4, base_width = 7)
+save_plot("figures/cor_sea.png", p3,
+          base_height = 4, base_width = 7)
+save_plot("figures/cor_pat.png", p4,
+          base_height = 4, base_width = 7)
+save_plot("figures/cor_sev.png", p5,
+          base_height = 4, base_width = 7)
 ```
 
 Look at how the different diversity metrics handle different resolutions.  
 
-```{r}
+```{r, eval = F}
 source("code/pyrodiv_calc.R")
 library(tictoc)
 mround <- function(x, base, digits){
@@ -326,29 +354,101 @@ write.csv(d_res, "data/yose_pd_vres.csv", row.names = F)
 # res2 <- nest(res)
 ```
 
+Bring in data for all hucs  
+
 ```{r}
+library(tidyverse)
 library(cowplot)
-ggplot(d_res, aes(x = fct, y = FDis, group = id)) +
-  geom_point() +
-  geom_line()
+library(tidybayes)
+library(lme4)
+library(broom.mixed)
+library(colorspace)
 
-ggplot(d_res, aes(x = fct, y = FRic, group = id)) +
-  geom_point() +
-  geom_line()
+d0 <- read.csv("../pyrodiv/data/intermediate/huc10_covs/pyrodiv_expanded.csv") %>% 
+  ## Convert expansion factor to cell area
+  mutate(grain = (fct * 30)^2 / 10000,
+         grain_l = log(grain),
+         ## Normalise FRic
+         FRic_l = log(FRic + 0.001),
+         FDis_s = (FDis - mean(FDis)) / sd(FDis),
+         FRic_s = (FRic_l - mean(FRic_l)) / sd(FRic_l),
+         simp_s = (simpson - mean(simpson)) / sd(simpson))
 
-p <- dplyr::select(d_res, id, FRic, FDis, simpson, fct) %>% 
-  mutate(res = (fct * 30)^2 / 10000) %>% 
-  pivot_longer(cols = FRic:simpson, names_to = "metric", values_to = "value") %>% 
-  ggplot(aes(x = res, y = value, group = id)) +
+## Add base pyrodiversity back in
+base <- filter(d0, fct == 1) %>% 
+  dplyr::select(id, 
+                b_dis = FDis_s,
+                b_ric = FRic_s,
+                b_sim = simp_s)
+
+d <- merge(d0, base)
+
+# ggplot(d, aes(x = fct, y = FDis_l, group = id)) +
+#   geom_point() +
+#   geom_line()
+# 
+# ggplot(d, aes(x = fct, y = FRic, group = id)) +
+#   geom_point() +
+#   geom_line()
+
+# p <- dplyr::select(d, id, FRic_l, FDis_l, simpson, fct) %>% 
+#   mutate(res = (fct * 30)^2 / 10000) %>% 
+#   pivot_longer(cols = FRic_l:simpson, names_to = "metric", values_to = "value") %>% 
+#   ggplot(aes(x = res, y = value, group = id)) +
+#   facet_grid(row = vars(metric), scales = "free") +
+#   geom_point(alpha = .1) +
+#   geom_line(alpha = .1) +
+#   scale_x_log10() +
+#   xlab("Cell size (hectares)") + ylab("Pyrodiversity") +
+#   theme_bw() 
+
+p2 <- dplyr::select(d, id, FRic = FRic_s, FDis = FDis_s, Simpson = simp_s, grain) %>% 
+  ## omit one outlier (aggregation anomoly in a small watershed), but keep for modeling below
+  filter(FDis != max(FDis)) %>% 
+  pivot_longer(cols = FRic:Simpson, names_to = "metric", values_to = "value") %>% 
+  ggplot(aes(x = grain, y = value, group = id, color = metric)) +
   facet_grid(row = vars(metric), scales = "free") +
-  geom_point() +
-  geom_line() +
+  geom_point(alpha = .1) +
+  geom_line(alpha = .1) +
+  scale_colour_discrete_qualitative(name = "Metric", guide = F) +
   scale_x_log10() +
   xlab("Cell size (hectares)") + ylab("Pyrodiversity") +
   theme_bw() 
 
-save_plot(filename = "figures/vary_scales.png", p,
+
+
+## What does this look like statistically?
+m_dis <- lmer(FDis_s ~ grain + grain:b_dis + (1|id), data = d)
+m_ric <- lmer(FRic_s ~ grain + grain:b_ric + (1|id), data = d)
+m_sim <- lmer(simp_s ~ grain + grain:b_sim + (1|id), data = d)
+
+tb <- tibble(metric = c("FDis", "FRic", "Simpson"),
+             models = list(m_dis, m_ric, m_sim)) %>% 
+  mutate(summary = map(models, ~tidy(.x, conf.int = T, conf.level = 0.9))) %>% 
+  unnest(summary) %>% 
+  dplyr::select(metric, term, estimate, conf.low, conf.high) %>% 
+  filter(term %in% c("grain", "grain:b_dis", "grain:b_ric", "grain:b_sim")) %>% 
+  mutate(term = ifelse(term %in% c("grain:b_dis", "grain:b_ric", "grain:b_sim"), 
+                       "grain:pd", "grain"),
+         term = fct_rev(term)) %>% 
+  mutate_if(is.numeric, round, 4)
+
+tb
+
+dots <- ggplot(tb, aes(x = estimate, y = term, xmin = conf.low, xmax = conf.high,
+                          color = metric)) +
+  geom_pointintervalh(size = 6, position = position_dodge(width=0.3)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_colour_discrete_qualitative(name = "Metric") +
+  theme_bw() +
+  theme(legend.direction = "horizontal",
+        legend.position = "top") +
+  ylab(NULL)
+
+save_plot(filename = "figures/vary_scales.png", p2,
           base_width = 6, base_height = 6, units = "in")
+save_plot(filename = "figures/vary_scales_dots.png", dots,
+          base_width = 4, base_height = 3, units = "in")
 ```
 
 
