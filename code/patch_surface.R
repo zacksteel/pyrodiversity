@@ -26,7 +26,7 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Simplify landscape if needed; Created a buffered landscape
-  land_buf <- st_union(landscape) %>%
+  land_buf <- suppressMessages(st_union(landscape)) %>%
     ## Switch to utm for buffering
     st_transform(3310) %>%
     st_buffer(buffer_landscape) %>%

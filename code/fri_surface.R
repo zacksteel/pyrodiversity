@@ -31,11 +31,20 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   keep <- suppressMessages(st_intersects(fires, landscape)) %>%
     apply(1, any) 
   fires <- fires[keep,]
+  
+  ## assign fire year column name
+  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
 
+  ## landscape raster of start year
   land_r <- as_Spatial(landscape) %>% 
-    raster(resolution = res(r_template), vals = 1) %>% 
+    raster(resolution = res(r_template), vals = start_year) %>% 
+    mask(landscape)
+  ## and end year
+  end_r <- as_Spatial(landscape) %>% 
+    raster(resolution = res(r_template), vals = end_year) %>% 
     mask(landscape)
 
+  ## FRI raster without fires
   noburn_r <- as_Spatial(landscape) %>%
     raster(resolution = res(r_template), vals = end_year - start_year) %>% 
     mask(landscape)
@@ -51,75 +60,80 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## limit to landscape
     fires_land <- suppressMessages(st_intersection(fires, landscape))
     
-    ## add starting year to base landscape
-    landscape <- mutate(landscape,
-                        year = start_year)
-    land_year <- dplyr::select(landscape, year)
-    ## simplify to just year attributes and "dissolve"
-    f_year <- dplyr::select(fires_land, year = one_of(fire_years)) %>% 
-      ## add landscape feature as a starting year
-      rbind(land_year) %>%
-      group_by(year) %>%
-      summarise() 
+    ## get all years
+    years <- pull(fires_land, Fire_Year) %>%
+      unique() %>% 
+      sort()
     
-    ## Attempt to run an intersection
-    ## If topology errors crop up, rebuild from rasters, much slower but less error prone
+    ## Created a raster for each year there was at least one fire
+    #### Slow step here, stars or terra versions of rasterize and resample might help
+    fri_yrs <- lapply(years, function(x) {
+      r <- filter(fires_land, Fire_Year == x) %>% 
+        st_collection_extract("POLYGON") %>% 
+        fasterize(raster = land_r, field = "Fire_Year") %>% 
+        suppressWarnings()
+      
+      ## Align with the landscape raster
+      return(raster::resample(r, land_r))
+      
+    })
     
-    ## Make index table of year
-    i_tab <- data.frame(index = 1:nrow(f_year), year = f_year$year)
+    ## Add start & end year raster
+    fri_yrs <- c(land_r, fri_yrs, end_r)
     
-    f_int <- try(st_intersection(f_year), silent = T)
-    
-    if("try-error" %in% class(f_int)) {
-      message("Topology issues, rebuilding features (slower)")
+    ## Get years since last fire for each year
+    ## set up empty raster
+    ysf_yrs <- lapply(fri_yrs, function(x) x * NA)
+    for(i in 2:length(fri_yrs)) {
+      ## make raster of most recent event
+      #### stars or terra version of calc may improve speed here as well
+      rc <- calc(stack(fri_yrs[i-1:i]), fun = max)
+      ## years since most resent fire
+      r <- fri_yrs[[i]] - rc
+      ysf_yrs[[i]] <- r
     }
     
-    if("try-error" %in% class(f_int)) {
-      ## Convert to raster and then back again
-      ## orders of magnitude faster with stars package than raster
-      ## https://r-spatial.github.io/stars/articles/stars5.html
-      f_year2  <- lapply(1:nrow(f_year), function(x) 
-        st_rasterize(f_year[x,"year"], template = st_as_stars(land_r))) %>% 
-        lapply(function(x) st_as_sf(x, merge = T))
-      f_year2 <- do.call(rbind, f_year2) %>% 
-        ## make multipolygons
-        group_by(year) %>% 
-        summarise() %>% 
-        st_buffer(dist = 0)
-      
-      f_int <- st_intersection(f_year2)
-      
-      ## Make index table of year
-      i_tab <- data.frame(index = 1:nrow(f_year2), year = f_year2$year)
+    ## Assign burned areas as 1
+    burned_l <- lapply(ysf_yrs, function(x) {
+      x[!is.na(x)] <- 1
+      x[is.na(x)] <- 0
+      return(x)
+    })
+    ## Add them up to get the cummulative number of fires
+    fire_cnt <- Reduce("+", burned_l, accumulate = T)
+    
+    ## Convert back to NA if a pixel didn't burn in a given year
+    fire_order <- lapply(1:length(burned_l), function(x) {
+      x <- burned_l[[x]] * fire_cnt[[x]]
+      x[x == 0] <- NA
+      return(x)
+    })
+    
+    ## Created a stack of weight rasters 
+    ## create raster of max fires so we are flipping the weight and 
+    ## making recent burns more important
+    stck <- stack(fire_order)
+    maxorder <- if(nlayers(stck) == 1) {1} else {
+      max(stck, na.rm = T)
     }
     
+    w <- lapply(fire_order, function(x) {
+      ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+      (1 - decay_rate) ^ (maxorder - x)
+    }) %>%
+      stack()
     
-    ## map years to origin index and subsequent calculations
-    d <- mutate(f_int,
-                years = map(origins, function(x) i_tab[x,"year"]),
-                ## Add ending year
-                years = map(years, function(x) c(x, end_year)),
-                ## get intervals between years
-                intervals = map(years, diff),
-                ## Set order of events (intervals in this case)
-                order = map(intervals, function(x) length(x):1),
-                ## calculate mean return interval using specified decay rate = [0,1)
-                ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
-                fri = map2(intervals, order, function(x, y) weighted.mean(x, (1 - decay_rate)^(y-1))),
-                ## Also get years since last fire
-                yslf = map(intervals, last),#function(x) x[[1]]),
-                ## unlist 
-                fri = unlist(fri),
-                yslf = unlist(yslf))
+    ## stack ysf layers
+    ysf_stack <- stack(ysf_yrs)
     
-    ## Pull out polygons (i.e. drop linesstrings from collections)
-    d2 <- st_collection_extract(d, "POLYGON") 
+    ## Get weighted average
+    weighted_fri <- if(nlayers(ysf_stack) == 1) {ysf_stack[[1]]} else {
+      weighted.mean(ysf_stack, w, na.rm = T)}
     
-    fri_r <- fasterize(d2, noburn_r, field = "fri")
-    
+
     ## save
-    writeRaster(fri_r, filename = fn_r, overwrite = T)
-    
+    writeRaster(weighted_fri, filename = fn_r, overwrite = T)
+
     out <- basename(fn_r)
   }
   

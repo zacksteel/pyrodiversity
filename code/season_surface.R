@@ -32,6 +32,9 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
     apply(1, any) 
   fires <- fires[keep,]
   
+  ## assign fire year column name
+  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
+  
   noburn_r <- as_Spatial(landscape) %>% 
     raster(resolution = res(r_template), vals = NA)
   
@@ -61,83 +64,76 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
       ## make unique year and day
       mutate(yrdy = as.integer(paste0(year, jday))) %>% 
       group_by(year, jday, yrdy) %>%
-      summarise(geometry = st_union(geometry)) %>%
+      summarise(geometry = suppressMessages(st_union(geometry)),
+                .groups = "drop_last") %>%
       ## Convert jday to degrees then radians
       mutate(deg_day = (jday/366) * 360,
              rad_day = deg_day*pi / 180,
              crad_day = cos(rad_day)) %>% 
       ungroup() 
     
-    ## Attempt to run an intersection to set up order of fires and areas of overlap
-    ## If topology errors crop up, rebuild from rasters, slower but less error prone
+    ## get all years
+    years <- pull(f_day, year) %>%
+      unique() %>% 
+      sort()
     
-    ## Make index table of jday
-    i_tab <- data.frame(index = 1:nrow(f_day),
-                        yrdy = f_day$yrdy,
-                        year = f_day$year,
-                        jday = f_day$jday,
-                        crad_day = f_day$crad_day)
+    ## Created a raster for each year there was at least one fire
+    #### Slow step here, stars or terra versions of rasterize and resample might help
+    sea_yrs <- lapply(years, function(x) {
+      r <- filter(f_day, year == x) %>% 
+        st_collection_extract("POLYGON") %>% 
+        fasterize(raster = noburn_r, fun = "last", field = "jday") %>% 
+        suppressWarnings()
+      
+      ## Align with the landscape raster
+      return(raster::resample(r, noburn_r))
+      
+    })
     
-    f_int <- try(st_intersection(f_day), silent = T)
+    ## Assign burned areas as 1
+    burned_l <- lapply(sea_yrs, function(x) {
+      x[!is.na(x)] <- 1
+      x[is.na(x)] <- 0
+      return(x)
+    })
+    ## Add them up to get the cummulative number of fires
+    fire_cnt <- Reduce("+", burned_l, accumulate = T)
     
-    if("try-error" %in% class(f_int)) {
-      warning("Topology issues, rebuilding features (slower)")
+    ## Convert back to NA if a pixel didn't burn in a given year
+    fire_order <- lapply(1:length(burned_l), function(x) {
+      x <- burned_l[[x]] * fire_cnt[[x]]
+      x[x == 0] <- NA
+      return(x)
+    })
+    
+    ## Created a stack of weight rasters 
+    ## create raster of max fires so we are flipping the weight and 
+    ## making recent burns more important
+    stck <- stack(fire_order)
+    maxorder <- if(nlayers(stck) == 1) {1} else {
+      max(stck, na.rm = T)
     }
     
-    if("try-error" %in% class(f_int)) {
-      
-      ## Convert to raster and then back again
-      ## orders of magnitude faster with stars package than raster
-      ## https://r-spatial.github.io/stars/articles/stars5.html
-      f_day2  <- lapply(1:nrow(f_day), function(x) 
-        st_rasterize(f_day[x,"yrdy"])) %>% 
-        lapply(function(x) st_as_sf(x, merge = T))
-      f_day2 <- do.call(rbind, f_day2) %>% 
-        ## make multipolygons
-        group_by(yrdy) %>% 
-        summarise() %>% 
-        ungroup() %>% 
-        ## Add year and day info back in
-        merge(i_tab, by = "yrdy") 
-      
-      ## still getting some ring self-interseciont issues, buffer 0 first
-      f_int <- st_transform(f_day2, 3310) %>% 
-        st_buffer(0) %>% 
-        st_transform(crs = st_crs(landscape)) %>% 
-        st_set_precision(1e5) %>% 
-        # st_make_valid() %>% 
-        st_intersection()
-      
-      
-    }
+    w <- lapply(fire_order, function(x) {
+      ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+      (1 - decay_rate) ^ (maxorder - x)
+    }) %>%
+      stack()
     
-    ## map years to origin index and subsequent calculations
-    d <- mutate(f_int,
-                ## lists of cos radian days, julian days, and years
-                crad_days = map(origins, function(x) i_tab[x,"crad_day"]),
-                jdays = map(origins, function(x) i_tab[x,"jday"]),
-                years = map(origins, function(x) i_tab[x,"year"]),
-                ## Set order of events 
-                order = map(crad_days, function(x) length(x):1),
-                ## calculate mean return interval using specified decay rate = [0,1)
-                season_w = map2(crad_days, order, function(x, y) weighted.mean(x, (1 - decay_rate)^(y-1))),
-                ## unlist 
-                season_w = unlist(season_w), ## Convert back to julian day
-                jday_w = acos(season_w),
-                jday_w = jday_w * 180 / pi,
-                jday_w = jday_w / 360 * 366)
+    ## stack severity layers
+    sea_stack <- stack(sea_yrs)
     
-    ## Pull out polygons (i.e. drop linesstrings from collections)
-    d2 <- st_collection_extract(d, "POLYGON")
+    ## Get weighted average
+    weighted_sea <- if(nlayers(sea_stack) == 1) {sea_yrs[[1]]} else {
+      weighted.mean(sea_stack, w, na.rm = T)}
     
-    sea_r <- fasterize(d2, noburn_r, field = "season_w") %>%
-      mosaic(noburn_r, fun = max) %>% 
-      ## limit to landscape
+    ## Keep just the area within the buffered landscape
+    land_sea <- crop(weighted_sea, landscape) %>% 
       mask(landscape)
     
-    writeRaster(sea_r, filename = fn_r, overwrite = T)
+    ## save
+    writeRaster(land_sea, filename = fn_r, overwrite = T)
     
-    out <- basename(fn_r)
     
   }
   
