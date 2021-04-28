@@ -16,9 +16,8 @@ This document gives an example of how to prepare fire perimeters to be used in [
 ```{r}
 library(tidyverse)
 library(sf)
-# library(mapview)
 
-## Read in some perimeters - pre-filtered somewhat (southern Sierra fires; >1984)
+## Read in some perimeters - pre-filtered somewhat (central Sierra fires; >1984)
 pers <- read_sf("data/spatial/firep.shp") %>% 
   mutate(Fire_Year = as.integer(YEAR_)) %>% 
   dplyr::select(FIRE_NAME, OBJECTID, Fire_Year)
@@ -64,7 +63,7 @@ out2 <- merge(out, dates, by = "state") %>%
 ```
 
 ```{r eval = F}
-st_write(out2, "data/spatial/gee_pers.shp")
+st_write(out2, "data/spatial/gee_pers.shp", append = F)
 ```
 
 If modifying for your own fire perimeters, you'll next need to upload gee_pers.shp (or whatever you name it) as an asset to your earth engine account. Follow instructures for the [Parks CBI model](https://tinyurl.com/CBImodel). You will likely need to modify path to Asset file (line ~30), and path for outputs (line ~375). Also, GEE doesn't seem to understand subdirectories in Google Drive (or I can't figure them out), rather it looks for a unique base directory. E.g. you just need to point to "dir", regardless of whether it's in "My Drive/dir" or "My Drive/one/two/three/dir". I'm not sure how it deals with duplicate directory names.  

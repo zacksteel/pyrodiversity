@@ -12,7 +12,7 @@ knitr::opts_knit$set(root.dir = "..")
 
 # Quantifying Pyrodiversity  
 
-Here I demonstrate the functionality of the [Pyrodiversity](https://github.com/zacksteel/pyrodiversity) repository, which is associated with the publication "Quantifying pyrodiversity and its drivers" (coming soon to a journal near you). I will limit calculations to the watersheds which intersect Yosemite National Park in California's Sierra Nevada Mountains and to moderate to large size fires (>404 ha) included in the Monitoring Trends in Burn Severity (MTBS) perimeters. I use the burn perimeters from MTBS but severity is calculated according to [Parks et al. 2019](https://www.mdpi.com/2072-4292/11/14/1735).   
+Here I demonstrate the functionality of the [Pyrodiversity](https://github.com/zacksteel/pyrodiversity) repository, which is associated with the publication ["Quantifying pyrodiversity and its drivers"](https://doi.org/10.1098/rspb.2020.3202). I will limit calculations to the watersheds which intersect Yosemite National Park in California's Sierra Nevada Mountains and to moderate to large size fires (>404 ha) included in the Monitoring Trends in Burn Severity (MTBS) perimeters. I use the burn perimeters from MTBS but severity is calculated according to [Parks et al. 2019](https://www.mdpi.com/2072-4292/11/14/1735).   
 
 All data for this demonstration are included in this repository, which can be cloned to run on your own. Alternatively, users can apply this code to their own fires and landscapes of interested. To do so you will need continous composite burn index (CBI) rasters calculated using the Parks model or another validated burn severity model. 
 
