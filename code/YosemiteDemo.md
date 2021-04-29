@@ -6,8 +6,8 @@ Zack Steel
 
 Here I demonstrate the functionality of the
 [Pyrodiversity](https://github.com/zacksteel/pyrodiversity) repository,
-which is associated with the publication “Quantifying pyrodiversity and
-its drivers” (coming soon to a journal near you). I will limit
+which is associated with the publication [“Quantifying pyrodiversity and
+its drivers”](https://doi.org/10.1098/rspb.2020.3202). I will limit
 calculations to the watersheds which intersect Yosemite National Park in
 California’s Sierra Nevada Mountains and to moderate to large size fires
 (\>404 ha) included in the Monitoring Trends in Burn Severity (MTBS)
@@ -40,9 +40,9 @@ includes California fires of at least 4 hectares that burned at least
 partially in mixed conifer forests.
 
 This fire history data must include a fire perimeter shapefile with
-ignition date (Julian day), ignition year and unique fire ID, as well as
-fire severity rasters (currently limited to composite burn index) that
-can be associated with the perimeter shapefile using the fire ID.
+ignition date (Julian day), ignition year, and unique fire ID, as well
+as fire severity rasters (currently limited to composite burn index)
+that can be associated with the perimeter shapefile using the fire ID.
 
 *Demo: There are 10 HUC10 watersheds (black outlines) whose centroids
 are within Yosemite (green polygon) and 64 fires (semi-transparent grey
@@ -92,17 +92,12 @@ as.data.frame(yose_fires) %>%
 Fire trait surfaces can be generated using the functions included in
 this repository, and allow a user to define trait weights and the
 importance decay rate of the “invisible mosaic” (i.e. how much less
-important are fires prior to the most recent). Alternatively, 30m
-resolution surfaces used in Steel et al. are available \[at a link\] for
-the forested watersheds (\(>=\) 50% forest cover) of the western United
-States. These surfaces use equally weighted fire traits and a importance
-decay of 0.5 (recent fires receive twice the weight as the previous
-fire).
+important are fires prior to the most recent).
 
 *Demo: for each watershed whose centroid is within Yosemite we will
 build fire trait surfaces for frequency, seasonality, severity and patch
-size of each watershed. Code below can be run for all (~1hr run time) or
-you can skip this block and read in pre-calculated layers in step \#3
+size of each watershed. Code below can be run for all (\~2 hr run time)
+or you can skip this block and read in pre-calculated layers in step \#3
 below.*
 
 ``` r
@@ -112,8 +107,10 @@ source("code/season_surface.R")
 source("code/sev_surface.R")
 source("code/patch_surface.R")
 
+library(tictoc)
 
-## Frequency calculation (takes about 40 seconds)
+tic()
+## Frequency calculation (takes about 4 minutes)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -127,10 +124,10 @@ for (i in 1:nrow(hucs)) {
                 decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                 out_dir = "data/spatial/yose_fri") #path to hold output rasters
 }
+toc()
 
-
-
-## Seasonality calculation (takes about 25 seconds)
+tic()
+## Seasonality calculation (takes about 3 minutes)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -143,6 +140,8 @@ for (i in 1:nrow(hucs)) {
                    decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                    out_dir = "data/spatial/yose_sea") #path to hold output rasters
 }
+toc()
+
 
 
 ## Severity and patch surface functions are much slower, consider parallel processing
@@ -163,7 +162,8 @@ for (i in 1:nrow(hucs)) {
 
 
 
-## Patch calculation (takes about 1.1 hrs)
+## Patch calculation (takes about 1.5 hrs)
+tic()
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
@@ -176,6 +176,7 @@ for (i in 1:nrow(hucs)) {
                   decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                   out_dir = "data/spatial/yose_pat") #path to hold output rasters
 }
+toc()
 ```
 
 *For illustration, here is what the four surfaces look like for the
@@ -185,7 +186,7 @@ Upper-Merced watershed, with non-vegetated areas masked out.*
 
 ## 3 Calculate pyrodviersity from surfaces
 
-This can be done for a full landscape (e.g. a watershed) or buffered
+This can be done for a full landscape (e.g., a watershed) or buffered
 around sample points. Here I demonstrate this for watersheds and will
 add a sample point example at a later date.
 

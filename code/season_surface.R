@@ -59,7 +59,7 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
                         jday = NA)
     
     ## simplify to just year and day attributes, "dissolve" and convert to cosine of radians to get circular date
-    f_day <- dplyr::select(fires, year = one_of(fire_years), jday = one_of(fire_day)) %>%
+    f_day <- dplyr::select(fires, year = Fire_Year, jday = one_of(fire_day)) %>%
       ## add landscape feature as a starting year
       ## make unique year and day
       mutate(yrdy = as.integer(paste0(year, jday))) %>% 
@@ -136,7 +136,5 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
     
     
   }
-  
-  return(out)
   
 }
