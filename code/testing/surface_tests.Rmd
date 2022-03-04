@@ -41,16 +41,16 @@ hmr = filter(hucs, Name == "Headwaters Merced River")
 tic() 
 fri_surface(landscape = hmr, #shapefile of landsape of interest
             fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
-            ID = "HUC10", #label of the unique landscape identifier
             fire_years = "Year", # label of the fire year column
             start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
             end_year = 2018, # Year after end of dataset (for MTBS: 2018)
             decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-            out_dir = here("data/scratch")) #path to hold output rasters
+            out_raster = here("data/scratch/fri_hmr.tif")) #path for writing output rasters
 toc()
 
 rold = rast(here("data", "scratch", "fri_1804000801_old.tif"))
-f = rast(here("data", "scratch", "fri_1804000801.tif"))
+r = rast(here("data", "scratch", "fri_1804000801.tif"))
+r = rast(here('data', 'scratch', 'fri_hmr.tif'))
 ```
 
 original fri surface function takes 14.75 seconds for the hmr watershed  

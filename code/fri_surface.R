@@ -3,23 +3,17 @@
 
 fri_surface <- function(landscape, # feature(s) that represent the landscape of interest
                         fires, #shapefile containing fire IDs associated with severity rasters
-                        ID, #label of the unique landscape identifier
                         fire_years = "Year", # label of the fire year column
                         start_year, # Year prior to start of dataset (for landsat: 1983)
                         end_year, # Year after end of dataset (for MTBS: 2018)
                         decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                        out_dir, #path to hold output rasters
+                        out_raster = NULL, #path if saving raster, if return
                         raster_template = "data/spatial/CBI_template.tif"
   ) {
   library(tidyverse)
   library(sf)
   library(terra)
-  library(stars)
-  # library(fasterize)
   library(here)
-  
-  ## filename of output
-  fn_r <- paste0(out_dir, "/fri_", as.data.frame(landscape)[1,ID], ".tif")
   
   ## Pull in severity raster to use as template
   r_template <- rast(here(raster_template))
@@ -38,9 +32,6 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   # fires <- rename(fires, Fire_Year = Year)
 
   ## landscape raster of start year
-  # land_r <- as_Spatial(landscape) %>% 
-  #   raster(resolution = res(r_template), vals = start_year) %>% 
-  #   mask(landscape)
   land_r <- vect(landscape) %>% 
     rast(resolution = res(r_template), vals = start_year) %>% 
     mask(vect(landscape))
@@ -58,9 +49,13 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   if(nrow(fires) == 0) {
     message("No fires intersect landscape")
     
-    writeRaster(noburn_r, filename = fn_r, overwrite = T)
-    
-    out <- basename(fn_r) } else {
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(noburn_r, filename = fn_r, overwrite = T)
+    }
+    ## if there are fires
+    } else {
 
     ## limit to landscape
     fires_land <- suppressMessages(st_intersection(fires, landscape))
@@ -92,9 +87,6 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     ysf_yrs <- lapply(fri_yrs, function(x) setValues(x, NA) )
     for(i in 2:length(fri_yrs)) {
       ## make raster of most recent event
-      #### stars or terra version of calc may improve speed here as well
-      # rc <- calc(stack(fri_yrs[i-1:i]), fun = max)
-      ## terra version
       rc <- rast(fri_yrs[i-1:i]) %>% 
         app(fun = max, na.rm = T)
 
@@ -150,13 +142,13 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     weighted_fri <- if(nlyr(ysf_stack) == 1) {ysf_stack[[1]]} else {
       weighted.mean(ysf_stack, w, na.rm = T)}
     
-
-    ## save
-    writeRaster(weighted_fri, filename = fn_r, overwrite = T)
-
-    out <- basename(fn_r)
+    ## Return raster to user if path is not provided for writing raster
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(weighted_fri, filename = out_raster, overwrite = T)
+    }
+    
   }
-  
-  return(out)
   
 }
