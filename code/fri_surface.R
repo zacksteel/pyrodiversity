@@ -52,7 +52,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     if(is.null(out_raster)) {
       return(noburn_r)
     } else {
-      writeRaster(noburn_r, filename = fn_r, overwrite = T)
+      writeRaster(noburn_r, filename = out_raster, overwrite = T)
     }
     ## if there are fires
     } else {
@@ -144,7 +144,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     
     ## Return raster to user if path is not provided for writing raster
     if(is.null(out_raster)) {
-      return(noburn_r)
+      return(weighted_fri)
     } else {
       writeRaster(weighted_fri, filename = out_raster, overwrite = T)
     }

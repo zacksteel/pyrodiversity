@@ -3,68 +3,61 @@
 
 patch_surface <- function(landscape, # feature(s) that represent the landscape of interest
                           fires, # features representing fire severity
-                          ID, #label of the unique landscape identifier
                           severity_dir, # directory where fire rasters are held
                           fire_years = "Year", # label of the fire year column
                           decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/4 of the previous
-                          buffer_landscape = 0, # Extension of landscape (in meters) if needed for point calculations near edges
-                          ## Buffer could also be used to reduce edge effects on patch area calculations
-                          out_dir, #path to hold output rasters
+                          out_raster = NULL, #path if saving raster, if return
                           raster_template = "data/spatial/CBI_template.tif"
                      ) {
-  library(raster)
-  library(stars)
+  library(terra)
+  # library(stars)
   library(tidyverse)
   library(sf)
-  library(fasterize)
+  library(units)
+  library(here)
   
   ## Pull in severity raster to use as template
-  r_template <- raster(raster_template)
+  r_template <- rast(here(raster_template))
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
   fires <- st_transform(fires, crs = st_crs(r_template))
   
-  ## Simplify landscape if needed; Created a buffered landscape
-  land_buf <- suppressMessages(st_union(landscape)) %>%
-    ## Switch to utm for buffering
-    st_transform(3310) %>%
-    st_buffer(buffer_landscape) %>%
-    st_transform(crs = st_crs(landscape)) %>%
-    ## need to assign a geometry column
-    st_sf() 
-  
-  ## filename of output
-  fn_r <- paste0(out_dir, "/pat_", as.data.frame(landscape)[1,ID], ".tif")
-  
   ## Which fires intersect with the landscape of interest?
-  ## Fires should also be utm
-  keep <- suppressMessages(st_intersects(fires, land_buf)) %>%
+  keep <- suppressMessages(st_intersects(fires, landscape)) %>%
     apply(1, any) 
   fires <- fires[keep,] 
   
   ## Create a landscape-wide empty raster 
-  #### for some reason crs isn't carrying over automatically anymore (R upgrade?)
-  land_r <- as_Spatial(land_buf) %>% 
-    raster(resolution = res(r_template), vals = NA) %>% 
-    mask(land_buf)
+  land_r <- vect(landscape) %>% 
+    rast(resolution = res(r_template), vals = NA) %>% 
+    mask(vect(landscape))
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {
     warning("No fires intersect landscape, returning a single patch")
     ## Calculate area
-    land_buf$log_area <- log(st_area(land_buf))
+    landscape$log_area <- log(st_area(landscape))
     
-    noburn_r <- fasterize(land_buf, land_r, 
+    noburn_r <- terra::rasterize(vect(landscape), land_r, 
                           field = "log_area")
     
-    writeRaster(noburn_r, filename = fn_r, overwrite = T)
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(noburn_r, filename = out_raster, overwrite = T)
+    }
     
-    out <- basename(fn_r)
+    ## if fires do more stuff
     } else {
       ## Make a list of severity rasters
       fire_files <- as.character(fires$Fire_ID) %>%
         sapply( function(x) list.files(severity_dir, pattern = x, full.names = T))
+      
+      miss <- sapply(fire_files, length) %>% table() %>% as.data.frame() %>% 
+        filter(`.` == 0) %>% pull(Freq)
+      
+      if(length(miss) > 0) {stop(cat(miss, 'missing fires in severity library\n'))}
     
       ## loop through each
       rasters <- lapply(1:length(fire_files), function(i) {
@@ -73,10 +66,11 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
         fire <- fires[i,]
         id <- as.character(fire$Fire_ID)
         year <- pull(fire, {{fire_years}})
+        # year <- pull(fire, Fire_Year)
         path <- fire_files[[i]]
         
         ## Get cbi raster
-        r <- raster(path, layer = 1)
+        r <- rast(path)
         names(r) <- as.character(year)
         return(r)
       })
@@ -86,52 +80,41 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
     
       ## get vector of burn years
       years <- sapply(rasters, names) %>% 
-        substring(2) %>% 
-        as.integer()
+        as.integer() %>% 
+        unique() %>% 
+        sort()
     
     ## Created a raster for each year there was at least one fire
     patch_yrs <- list()
     
-    #### This is a very slow step
+    #### This is a slow step
     for(x in years) {
       ## Which match the year in question
-      keep <- sapply(rasters, names) == paste0("X", x)
+      keep <- sapply(rasters, names) == x
       fs <- rasters[keep]
       
       ## Mosaic if more than one, otherwise unlist and return
       if(length(fs) == 1) {m <- fs[[1]]} else
       {
-        ## Set up awkward do.call for list of rasters
-        fs2 <- fs
-        fs2$fun <- max # if overlapping fires use max severity
-        fs2$na.rm <- TRUE
-        
-        m <- do.call(mosaic, fs2)
+        ## set up SpatRasterCollection avoids awkward do.call
+        rsrc <- sprc(fs)
+        m <- mosaic(rsrc, fun = 'max')
       }
       
       ## Convert to features with standard cut-offs from Miller and Thode 2007
       breaks <- c(0, .1, 1.25, 2.25, 3)
-      rc <- cut(m, breaks = breaks, include.lowest = T)
-        ## Convert to vector
-        ## stars version is about 3 times faster
-        ## https://r-spatial.github.io/stars/articles/stars5.html
-        
-      fc <- st_as_stars(rc) %>% 
-        st_as_sf() %>% 
-        group_by(layer) %>%
-        summarize(.groups = "drop_last")
+      rc <- classify(m, rcl = breaks, include.lowest = T)
       
-      ## convert from multi to single polygons
-      fc_polys <- st_cast(fc, "MULTIPOLYGON", warn = F) %>% # sometimes necessary but not always
-        st_cast("POLYGON", warn = F) %>%
-        ## Calculate log-area and convert back to raster
-        mutate(log_area = log(st_area(.)))
-      
-      r_area <- fasterize(fc_polys, rc, field = "log_area")
-      
+      ## Convert to vector
+      fc <- as.polygons(rc, dissolve = T) %>% 
+        disagg()
+      ## Calculate log-area
+      fc$log_area <- log(expanse(fc, unit = 'ha'))
+      ## Back to raster
+      r_area <- terra::rasterize(fc, rc, field = 'log_area')
       
       ## Align with the landscape raster
-      out <- raster::resample(r_area, land_r)
+      out <- terra::resample(r_area, land_r)
       
       patch_yrs <- c(patch_yrs, out)
     }
@@ -157,8 +140,8 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
     ## Created a stack of weight rasters 
     ## create raster of max fires so we are flipping the weight and 
     ## making recent burns more important
-    stck <- stack(fire_order)
-    maxorder <- if(nlayers(stck) == 1) {1} else {
+    stck <- rast(fire_order)
+    maxorder <- if(nlyr(stck) == 1) {1} else {
       max(stck, na.rm = T)
     }
     
@@ -166,34 +149,38 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
       ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
       (1 - decay_rate) ^ (maxorder - x)
     }) %>%
-      stack()
+      rast()
     
     ## stack severity layers
-    patch_stack <- stack(patch_yrs)
+    patch_stack <- rast(patch_yrs)
     
     ## Get weighted average
-    weighted_patch <- if(nlayers(patch_stack) == 1) {patch_yrs[[1]]} else {
+    ## Take out garbage, the next step is a big memory suck
+    gc()
+    weighted_patch <- if(nlyr(patch_stack) == 1) {patch_yrs[[1]]} else {
       weighted.mean(patch_stack, w, na.rm = T)}
     
     ## Keep just the area within the buffered landscape
-    land_patch <- mask(weighted_patch, land_buf)
+    land_patch <- mask(weighted_patch, vect(landscape))
     
-    ## Calculate patches of unburned area
-    ub_poly <- suppressMessages(st_difference(land_buf, fires[,"geometry"])) %>%
-      st_cast("MULTIPOLYGON", warn = F) %>% # sometimes necessary but not always
-      st_cast("POLYGON", warn = F) %>%
-      mutate(log_area = log(st_area(.)))
-    ub_r <- fasterize(ub_poly, land_patch, field = "log_area")
+    ## Calculate patches of unburned area; pretty slow
+    ub_poly <- suppressMessages(st_difference(landscape, fires[,"geometry"])) %>% 
+      vect() %>% 
+      disagg()
+    ## Calculate log-area
+    ub_poly$log_area <- log(expanse(ub_poly, unit = 'ha'))
+    ## Back to raster
+    ub_r <- terra::rasterize(ub_poly, land_patch, field = 'log_area')
     
     ## Combine weighted burned and unburned
-    land_patch2 <- mosaic(land_patch, ub_r, fun=min)
+    land_patch2 <- terra::merge(land_patch, ub_r)
     
-    ## save
-    writeRaster(land_patch2, filename = fn_r, overwrite = T)
-    
-    out <- basename(fn_r)
+    ## Return raster to user if path is not provided for writing raster
+    if(is.null(out_raster)) {
+      return(land_patch2)
+    } else {
+      writeRaster(land_patch2, filename = out_raster, overwrite = T)
+    }
   }
-  
-  return(out)
   
 }

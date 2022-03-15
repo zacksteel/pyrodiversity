@@ -38,6 +38,7 @@ yose_fires <- read_sf("../../data/spatial/yose_mtbs.shp")
 ## let's test with one huc10 (Headwaters Merced River)
 hmr = filter(hucs, Name == "Headwaters Merced River")
 
+## Testing new fri code
 tic() 
 fri_surface(landscape = hmr, #shapefile of landsape of interest
             fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
@@ -51,7 +52,57 @@ toc()
 rold = rast(here("data", "scratch", "fri_1804000801_old.tif"))
 r = rast(here("data", "scratch", "fri_1804000801.tif"))
 r = rast(here('data', 'scratch', 'fri_hmr.tif'))
+
+## new season code
+tic()
+season_surface(landscape = hmr, #shapefile of landsape of interest
+               fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+               fire_years = "Year", # label of the fire year column in fires shp
+               fire_day = "jday",# label of fire day column in fires shp
+               decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+               out_raster = here("data/scratch/sea_hmr.tif")) #path for writing output rasters
+toc()
+rold = rast(here("data", "scratch", "sea_1804000801.tif"))
+r = rast(here('data', 'scratch', 'sea_hmr.tif'))
+
+## new sev code
+tic()
+sev_surface(landscape = hmr, #shapefile of landsape of interest
+            fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+            severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+            fire_years = "Year", # label of the fire year column
+            decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+            out_raster = here("data/scratch/sev_hmr.tif")) #path for writing output rasters
+toc()
+rold = rast(here("data", "scratch", "sev_1804000801.tif"))
+r = rast(here('data', 'scratch', 'sev_hmr.tif'))
+
+## new patch code
+## hmr takes a real long time (at least with the old code) so picking a simpler fire history
+htr = filter(hucs, Name == "Headwaters Tuolumne River")
+tic()
+patch_surface(landscape = hmr, #shapefile of landsape of interest
+              fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+              severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+              fire_years = "Year", # label of the fire year column
+              decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+              out_raster = here("data/scratch/pat_hmr.tif")) #path for writing output rasters
+toc()
+## old used m^2, new uses ha
+rold = rast(here("data", "scratch", "pat_1804000901.tif"))
+r = rast(here('data', 'scratch', 'pat_htr.tif'))
+r = rast(here('data', 'scratch', 'pat_hmr.tif'))
 ```
 
 original fri surface function takes 14.75 seconds for the hmr watershed  
 with terra run time is only 5.29 seconds. minor differences at the pixel level, likely do to how rasterizing is done?
+
+Original sea surface function takes 14.21 seconds for the hmr watershed
+Updated version takes 3.93 seconds  
+
+Original sev surface function takes 20.07 seconds for the hmr watershed
+Updated version takes 3.4 seconds
+
+Original patch surface function takes 43.42 seconds for the htr watershed (hmr was taking > 1hr)
+Updated version takes 4.3 seconds!
+

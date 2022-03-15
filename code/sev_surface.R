@@ -3,96 +3,103 @@
 
 sev_surface <- function(landscape, # feature(s) that represent the landscape of interest
                         fires, # features representing fire severity
-                        ID, #label of the unique landscape identifier
                         severity_dir, # directory where fire rasters are held
                         fire_years = "Year", # label of the fire year column
                         decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/2 of the previous
-                        out_dir, #path to hold output rasters
+                        out_raster = NULL, #path if saving raster, if return
                         raster_template = "data/spatial/CBI_template.tif"
                      ) {
   library(tidyverse)
   library(sf)
-  library(raster)
+  library(terra)
   library(lwgeom)
   
-  ## filename of output
-  fn_r <- paste0(out_dir, "/sev_", as.data.frame(landscape)[1,ID], ".tif")
-  
   ## Pull in severity raster to use as template
-  r_template <- raster(raster_template)
+  r_template <- rast(here(raster_template))
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Which fires intersect with the landscape of interest?
-  ## Fires should also be utm
   keep <- suppressMessages(st_intersects(fires, landscape)) %>%
     apply(1, any) 
-  fires <- fires[keep,] 
+  fires1 <- fires[keep,] 
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
-  if(nrow(fires) == 0) {
+  if(nrow(fires1) == 0) {
     warning("No fires intersect landscape, returning a zero severity landscape")
   
-    noburn_r <- as_Spatial(landscape) %>% 
-      raster(resolution = res(r_template), vals = 0) %>% 
-      mask(landscape)
-
-    writeRaster(noburn_r, filename = fn_r, overwrite = T)
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(noburn_r, filename = out_raster, overwrite = T)
+    }
     
-    out <- basename(fn_r) }
+    }
   
   ## otherwise calculate a weighted severity landscape
   else {
     
     ## Make a list of severity rasters
-    fire_files <- as.character(fires$Fire_ID) %>%
+    fire_files <- as.character(fires1$Fire_ID) %>%
       sapply( function(x) list.files(severity_dir, pattern = x, full.names = T))
+    
+    miss <- sapply(fire_files, length) %>% table() %>% as.data.frame() %>% 
+      filter(`.` == 0) %>% pull(Freq)
+    
+    if(length(miss) > 0) {stop(cat(miss, 'missing fires in severity library\n'))}
     
     ## loop through each
     rasters <- lapply(1:length(fire_files), function(i) {
-      
+      # print(i)
       ## pull out fire and info
-      fire <- fires[i,]
+      fire <- fires1[i,]
       id <- as.character(fire$Fire_ID)
       year <- pull(fire, {{fire_years}})
+      # year <- pull(fire, Fire_Year)
       
       ## Get cbi raster
-      r <- raster(fire_files[[i]], layer = 1) 
+      r <- rast(fire_files[[i]]) 
       
       names(r) <- as.character(year)
       return(r)
     })
     
     ## Create a landscape-wide empty raster 
-    land_r <- as_Spatial(landscape) %>% 
-      raster(resolution = res(rasters[[1]]), vals = NA)
+    land_r <- vect(landscape) %>% 
+      rast(resolution = res(rasters[[1]]), vals = NA)
     
     ## get vector of burn years
-    years <- pull(fires, {{fire_years}}) %>%
+    years <- pull(fires1, {{fire_years}}) %>%
       unique()
+    # years <- pull(fires, Fire_Year) %>%
+    #   unique()
     
     ## Created a raster for each year there was at least one fire
     sev_yrs <- lapply(years, function(x) {
       # print(x)
       ## Which match the year in question
-      keep <- sapply(rasters, names) == paste0("X", x)
+      keep <- sapply(rasters, names) == x
       fs <- rasters[keep]
       
       ## Mosaic if more than one, otherwise unlist and return
       if(length(fs) == 1) {m <- fs[[1]]} else
       {
+        ## set up SpatRasterCollection avoids awkward do.call
+        rsrc <- sprc(fs)
+        m <- mosaic(rsrc, fun = 'max')
+        
         ## Set up awkward do.call for list of rasters
         # names(fs)[1:2] <- c('x','y')
-        fs$fun <- max # if overlapping fires use max severity
-        fs$na.rm <- TRUE
-        
-        m <- do.call(mosaic, fs)
+        # fs$fun <- max # if overlapping fires use max severity
+        # fs$na.rm <- TRUE
+        # 
+        # m <- do.call(mosaic, fs)
       }
       
       ## Align with the landscape raster
-      return(raster::resample(m, land_r))
+      return(terra::resample(m, land_r))
       
     })
     
@@ -121,8 +128,8 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## Created a stack of weight rasters 
     ## create raster of max fires so we are flipping the weight and 
     ## making recent burns more important
-    stck <- stack(fire_order)
-    maxorder <- if(nlayers(stck) == 1) {1} else {
+    stck <- rast(fire_order)
+    maxorder <- if(nlyr(stck) == 1) {1} else {
       max(stck, na.rm = T)
     }
     
@@ -130,30 +137,30 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
       ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
       (1 - decay_rate) ^ (maxorder - x)
     }) %>%
-      stack()
+      rast()
     
     ## stack severity layers
-    sev_stack <- stack(sev_yrs)
+    sev_stack <- rast(sev_yrs)
     
     ## Get weighted average
-    weighted_sev <- if(nlayers(sev_stack) == 1) {sev_yrs[[1]]} else {
+    weighted_sev <- if(nlyr(sev_stack) == 1) {sev_yrs[[1]]} else {
       weighted.mean(sev_stack, w, na.rm = T)}
     
     ## Keep just the area within the buffered landscape
-    land_sev <- crop(weighted_sev, landscape)
+    land_sev <- crop(weighted_sev, vect(landscape))
     
     ## Any pixels that haven't burned assign zero
     land_sev[is.na(land_sev)] <- 0
     
     ## make everything outside the landscape NA again
-    land_sev <- mask(land_sev, landscape)
+    land_sev <- mask(land_sev, vect(landscape))
     
-    ## save
-    writeRaster(land_sev, filename = fn_r, overwrite = T)
-    
-    out <- basename(fn_r)
+    ## Return raster to user if path is not provided for writing raster
+    if(is.null(out_raster)) {
+      return(land_sev)
+    } else {
+      writeRaster(land_sev, filename = out_raster, overwrite = T)
+    }
   }
-  
-  return(out)
   
 }

@@ -3,25 +3,20 @@
 
 season_surface <- function(landscape, # feature(s) that represent the landscape of interest
                            fires, # features representing fire severity
-                           ID, #label of the unique landscape identifier
                            fire_years = "Year", # label of the fire year column
                            fire_day = "jday", # label of the fire ignition Julian date column
                            decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/2 of the previous
-                           out_dir, #path to hold output rasters
+                           out_raster = NULL, #path if saving raster, if return
                            raster_template = "data/spatial/CBI_template.tif"
                         ) 
   {
   library(tidyverse)
   library(sf)
-  library(raster)
-  library(stars)
-  library(fasterize)
-  
-  ## filename of output
-  fn_r <- paste0(out_dir, "/sea_", as.data.frame(landscape)[1,ID], ".tif")
+  library(terra)
+  library(here)
   
   ## Pull in severity raster to use as template
-  r_template <- raster(raster_template)
+  r_template <- rast(here(raster_template))
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
@@ -34,18 +29,22 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
   
   ## assign fire year column name
   fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
+  # fires <- rename(fires, Fire_Year = Year)
   
-  noburn_r <- as_Spatial(landscape) %>% 
-    raster(resolution = res(r_template), vals = NA)
+  noburn_r <- vect(landscape) %>% 
+    rast(resolution = res(r_template), vals = NA)
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {
     warning("No fires intersect landscape, returning NA landscape")
-
-    writeRaster(noburn_r, filename = fn_r, overwrite = T)
     
-    out <- basename(fn_r) } 
-  
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(noburn_r, filename = out_raster, overwrite = T)
+    }
+  }
+    ## if there are fires
   else {
     ## Make sure day is between 1 and 365 (ie. that is looks like a Julian day)
     tmp <- dplyr::select(fires, fire_day) %>%
@@ -59,7 +58,7 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
                         jday = NA)
     
     ## simplify to just year and day attributes, "dissolve" and convert to cosine of radians to get circular date
-    f_day <- dplyr::select(fires, year = Fire_Year, jday = one_of(fire_day)) %>%
+    f_day <- dplyr::select(fires, year = Fire_Year, jday = all_of(fire_day)) %>%
       ## add landscape feature as a starting year
       ## make unique year and day
       mutate(yrdy = as.integer(paste0(year, jday))) %>% 
@@ -78,11 +77,11 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
       sort()
     
     ## Created a raster for each year there was at least one fire
-    #### Slow step here, stars or terra versions of rasterize and resample might help
     sea_yrs <- lapply(years, function(x) {
       r <- filter(f_day, year == x) %>% 
         st_collection_extract("POLYGON") %>% 
-        fasterize(raster = noburn_r, fun = "last", field = "jday") %>% 
+        vect() %>% 
+        terra::rasterize(y = noburn_r, fun = "last", field = "jday") %>% 
         suppressWarnings()
       
       ## Align with the landscape raster
@@ -109,8 +108,8 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
     ## Created a stack of weight rasters 
     ## create raster of max fires so we are flipping the weight and 
     ## making recent burns more important
-    stck <- stack(fire_order)
-    maxorder <- if(nlayers(stck) == 1) {1} else {
+    stck <- rast(fire_order)
+    maxorder <- if(nlyr(stck) == 1) {1} else {
       max(stck, na.rm = T)
     }
     
@@ -118,21 +117,25 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
       ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
       (1 - decay_rate) ^ (maxorder - x)
     }) %>%
-      stack()
+      rast()
     
     ## stack severity layers
-    sea_stack <- stack(sea_yrs)
+    sea_stack <- rast(sea_yrs)
     
     ## Get weighted average
-    weighted_sea <- if(nlayers(sea_stack) == 1) {sea_yrs[[1]]} else {
+    weighted_sea <- if(nlyr(sea_stack) == 1) {sea_yrs[[1]]} else {
       weighted.mean(sea_stack, w, na.rm = T)}
     
     ## Keep just the area within the buffered landscape
-    land_sea <- crop(weighted_sea, landscape) %>% 
-      mask(landscape)
+    land_sea <- crop(weighted_sea, vect(landscape)) %>% 
+      mask(vect(landscape))
     
-    ## save
-    writeRaster(land_sea, filename = fn_r, overwrite = T)
+    ## Return raster to user if path is not provided for writing raster
+    if(is.null(out_raster)) {
+      return(land_sea)
+    } else {
+      writeRaster(land_sea, filename = out_raster, overwrite = T)
+    }
     
     
   }

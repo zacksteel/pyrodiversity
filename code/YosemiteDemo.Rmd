@@ -10,6 +10,9 @@ knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 knitr::opts_knit$set(root.dir = "..")
 ```
 
+__there are some minor warnings to clean up and I seem to have fewer hucs this time than before for some reason?__
+
+
 # Quantifying Pyrodiversity  
 
 Here I demonstrate the functionality of the [Pyrodiversity](https://github.com/zacksteel/pyrodiversity) repository, which is associated with the publication ["Quantifying pyrodiversity and its drivers"](https://doi.org/10.1098/rspb.2020.3202). I will limit calculations to the watersheds which intersect Yosemite National Park in California's Sierra Nevada Mountains and to moderate to large size fires (>404 ha) included in the Monitoring Trends in Burn Severity (MTBS) perimeters. I use the burn perimeters from MTBS but severity is calculated according to [Parks et al. 2019](https://www.mdpi.com/2072-4292/11/14/1735).   
@@ -30,18 +33,19 @@ These fire history data must include a fire perimeter shapefile with ignition da
 ```{r}
 library(tidyverse)
 library(sf)
-library(raster)
-library(stars)
-library(fasterize)
+library(terra)
+# library(stars)
+# library(fasterize)
 library(lwgeom)
 library(FD)
 library(colorspace)
 library(knitr)
+library(here)
 
 ## read in shapefiles
-yose <- read_sf("data/spatial/yosemite.shp")
-hucs <- read_sf("data/spatial/yose_sheds.shp")
-yose_fires <- read_sf("data/spatial/yose_mtbs.shp") 
+yose <- read_sf(here("data/spatial/yosemite.shp"))
+hucs <- read_sf(here("data/spatial/yose_sheds.shp"))
+yose_fires <- read_sf(here("data/spatial/yose_mtbs.shp")) 
 
 ggplot() +
   geom_sf(data = yose, fill = "darkgreen", color = NA, alpha = 0.3) +
@@ -63,79 +67,78 @@ Fire trait surfaces can be generated using the functions included in this reposi
 
 ```{r eval = F}
 ## load functions
-source("code/fri_surface.R")
-source("code/season_surface.R")
-source("code/sev_surface.R")
-source("code/patch_surface.R")
+source(here("code/fri_surface.R"))
+source(here("code/season_surface.R"))
+source(here("code/sev_surface.R"))
+source(here("code/patch_surface.R"))
 
 library(tictoc)
 
 tic()
-## Frequency calculation (takes about 4 minutes)
+## Frequency calculation (takes about 1 minute)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
+    out_base <- paste0('fri_', huc$HUC10, '.tif')
     
     fri_surface(landscape = huc, #shapefile of landsape of interest
                 fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
-                ID = "HUC10", #label of the unique landscape identifier
                 fire_years = "Year", # label of the fire year column
                 start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
                 end_year = 2018, # Year after end of dataset (for MTBS: 2018)
                 decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                out_dir = "data/spatial/yose_fri") #path to hold output rasters
+                out_raster = here('data', 'spatial','yose_fri', out_base)) #path for writing output rasters
 }
 toc()
 
 tic()
-## Seasonality calculation (takes about 3 minutes)
+## Seasonality calculation (takes about 40 seconds)
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
+    out_base <- paste0('sea_', huc$HUC10, '.tif')
     
     season_surface(landscape = huc, #shapefile of landsape of interest
                    fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
-                   ID = "HUC10", #label of the unique landscape identifier
                    fire_years = "Year", # label of the fire year column
                    fire_day = "jday",
                    decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                   out_dir = "data/spatial/yose_sea") #path to hold output rasters
+                   out_raster = here('data', 'spatial','yose_sea', out_base)) #path for writing output rasters
 }
 toc()
 
 
 
-## Severity and patch surface functions are much slower, consider parallel processing
-## if running for large or many landscapes
-## Severity calculation (takes about 4 minutes)
-for (i in 1:nrow(hucs)) {
-    ## pull out single landscape          
-    huc <- hucs[i,]
-    
-    sev_surface(landscape = huc, #shapefile of landsape of interest
-                fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
-                ID = "HUC10", #label of the unique landscape identifier
-                severity_dir = "data/spatial/yose_mtbs_sev", # directory where fire rasters are held
-                fire_years = "Year", # label of the fire year column
-                decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                out_dir = "data/spatial/yose_sev") #path to hold output rasters
-}
-
-
-
-## Patch calculation (takes about 1.5 hrs)
+## Severity calculation (takes about 30 seconds)
 tic()
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
+    out_base <- paste0('sev_', huc$HUC10, '.tif')
+    
+    sev_surface(landscape = huc, #shapefile of landsape of interest
+                fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+                severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+                fire_years = "Year", # label of the fire year column
+                decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+                out_raster = here('data', 'spatial','yose_sev', out_base)) #path for writing output rasters
+}
+toc()
+
+
+## Patch calculation (takes about 1 minute)
+tic()
+for (i in 1:nrow(hucs)) {
+    ## pull out single landscape          
+    huc <- hucs[i,]
+    out_base <- paste0('pat_', huc$HUC10, '.tif')
     
     patch_surface(landscape = huc, #shapefile of landsape of interest
                   fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
-                  ID = "HUC10", #label of the unique landscape identifier
-                  severity_dir = "data/spatial/yose_mtbs_sev", # directory where fire rasters are held
+                  severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
                   fire_years = "Year", # label of the fire year column
                   decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
-                  out_dir = "data/spatial/yose_pat") #path to hold output rasters
+                  out_raster = here('data', 'spatial','yose_pat', out_base)) #path for writing output rasters
 }
 toc()
 
