@@ -1,6 +1,6 @@
 ---
 title: "Pyrodiversity Yosemite Demo"
-author: "Zack Steel"
+# author: "Zack Steel"
 # date: "5/31/2020"
 output: rmarkdown::github_document
 ---

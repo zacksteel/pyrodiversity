@@ -1,9 +1,5 @@
 Pyrodiversity Yosemite Demo
 ================
-Zack Steel
-
-**there are some minor warnings to clean up and I seem to have fewer
-hucs this time than before for some reason?**
 
 # Quantifying Pyrodiversity
 
@@ -194,7 +190,7 @@ add a sample point example at a later date.
 
 ``` r
 ## Calculate pyrodviersity for each watershed
-source(here("code/pyrodiv_calc.R"))
+source(here("code/global_fd.R"))
 ## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {
   huc <- hucs[i,]
@@ -223,7 +219,7 @@ pd <- lapply(1:nrow(hucs), function(i) {
   flam_r <- here(paste0("data/spatial/yose_flam/flam_", id, ".tif")) %>% 
     rast()
 
-d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths or rast files
+d <- global_fd(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths or rast files
                   mask = flam_r #optional mask layer path (e.g. remove non-flammable areas)
              )
 return(d)
