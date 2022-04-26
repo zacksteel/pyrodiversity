@@ -6,5 +6,5 @@ Includes demos for [prepping fire perimeters](https://github.com/zacksteel/pyrod
 If using this code please cite:  
 Z. L. Steel, B. M. Collins, D. B. Sapsis, and S. L. Stephens, “Quantifying pyrodiversity and its drivers,” Proceedings of the Royal Society B: Biological Sciences, vol. 288, no. 1948, Apr. 2021.
 
-2022-04-26 Update
+2022-04-26 Update:  
 Surface generation functions and global_fd() (formerly known as pyrodiv_calc() ) have been updated to improve functionality and increase speed. Please let me know if you find any bugs. 
