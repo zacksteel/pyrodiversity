@@ -2,10 +2,10 @@
 ## Author: Zack Steel
 
 fri_surface <- function(landscape, # feature(s) that represent the landscape of interest
-                        fires, #shapefile containing fire IDs associated with severity rasters
+                        fires, #shapefile of fire perimeters including a year attribute
                         fire_years = "Year", # label of the fire year column
                         start_year, # Year prior to start of dataset (for landsat: 1983)
-                        end_year, # Year after end of dataset (for MTBS: 2018)
+                        end_year, # Year after end of dataset 
                         decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                         out_raster = NULL, #path if saving raster, if return
                         raster_template = "data/spatial/CBI_template.tif"

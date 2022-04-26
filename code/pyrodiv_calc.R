@@ -2,35 +2,42 @@
 ## Project: Pyrodiversity
 
 pyrodiv_calc <- function(
-  traits, #vector of paths to trait rasters or rasters themselves
+  traits, #vector of paths to trait rasters or rast objects
   frich = F, #logical, whether to also calculate function richness
   pca_axes = "max", #number of PC dimensions to use when calculating FRic
   mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
 ) {
   library(tidyverse)
   library(FD)
-  library(raster)
+  library(terra)
   
   ## Read in rasters
-  ts <- stack(traits)
+  if(class(traits) != 'SpatRaster') {
+    ts <- rast(traits)
+  } else
+  {
+    ts <- traits
+  }
+  # ts <- stack(traits)
+  
   if(!is.null(mask)) {
-    m <- if(class(mask) == "RasterLayer") {m <- mask} else {
-      m <- raster(mask)
-    }
+    if(class(mask) == "SpatRaster") {m <- mask} else 
+      {
+      m <- rast(mask)
+      }
 
     ## projection mask if needed
-    if(!(identical(crs(ts), crs(m)) & identical(extent(ts), extent(m)))) {
-      m <- suppressWarnings(projectRaster(from = m, crs = crs(ts), res = res(ts), #gives a warning about missing values, maybe because are only == 1?, function appear to work
-                             method = "ngb", alignOnly = F)) %>% 
+    if(!(identical(crs(ts), crs(m)) & identical(ext(ts), ext(m)))) {
+      m <- suppressWarnings(project(m, ts, method = "near")) #%>%  #gives a warning about missing values, maybe because are only == 1?, function appear to work
         ## necessary to resample to align extents
-        resample(y = ts, method = "ngb")
+        # resample(y = ts, method = "near")
     }
     ## run mask
-    ts <- mask(ts, m) 
+    ts <- terra::mask(ts, m) 
   }
   
   ## get crosstabs as frequencies/abundances of unique trait combos
-  if(nlayers(ts) == 1) {
+  if(nlyr(ts) == 1) {
     ctab <- freq(ts, digits = 2) %>% 
       as.data.frame()
     names(ctab) <- c(names(ts), "Freq")
@@ -38,11 +45,14 @@ pyrodiv_calc <- function(
     ctab <- crosstab(ts, digits = 3, long = T, useNA = T) 
   }
   
-  ## drop all NA row
-  ctab <- ctab %>% 
-    mutate(nacnt = rowSums(is.na(.))) %>% 
-    filter(nacnt < length(.) - 2) %>% 
-    dplyr::select(-nacnt)
+  ## remove instances with only NA traits (don't consider the last Freq column)
+  ctab <- filter(ctab, if_any(1:last_col()-1, ~ !is.na(.)))
+
+  
+  # ctab <- ctab %>% 
+  #   mutate(nacnt = rowSums(is.na(.))) %>% 
+  #   filter(nacnt < length(.) - 2) %>% 
+  #   dplyr::select(-nacnt)
 
   
   ## Warn user about number of unique species
@@ -61,19 +71,21 @@ pyrodiv_calc <- function(
   add <- cmean + cmean/1000
   add['Freq'] <- 1
 
-  ctab <- rbind(ctab, add)
+  ctab2 <- rbind(ctab, add)
   
   # add "species" names
-  row.names(ctab) <- sapply(1:nrow(ctab), function(x) paste0("sp",x))
+  row.names(ctab2) <- sapply(1:nrow(ctab2), function(x) paste0("sp",x))
   
   ## convert to trait and abundance 
-  abun <- rownames_to_column(ctab) %>% 
-    pivot_wider(names_from = rowname, id_cols = Freq, values_from = Freq) %>% 
+  abun <- rownames_to_column(ctab2) %>% 
+    ## only have one 'site' when calculating for the full landscape
+    dplyr::select(rowname, Freq) %>% 
+    pivot_wider(names_from = rowname, values_from = Freq) %>% 
     as.matrix()
-  traits <- dplyr::select(ctab, -Freq)
+  traits2 <- dplyr::select(ctab2, -Freq)
   
   ## run diversity function
-  div <- dbFD(traits, abun, stand.x = T, 
+  div <- dbFD(traits2, abun, stand.x = T, 
               corr = "cailliez",
               calc.FRic = frich, 
               m = pca_axes,

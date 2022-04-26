@@ -34,8 +34,6 @@ These fire history data must include a fire perimeter shapefile with ignition da
 library(tidyverse)
 library(sf)
 library(terra)
-# library(stars)
-# library(fasterize)
 library(lwgeom)
 library(FD)
 library(colorspace)
@@ -79,13 +77,14 @@ tic()
 for (i in 1:nrow(hucs)) {
     ## pull out single landscape          
     huc <- hucs[i,]
+    ## Setting up a path basename for this demo
     out_base <- paste0('fri_', huc$HUC10, '.tif')
     
-    fri_surface(landscape = huc, #shapefile of landsape of interest
+    fri_surface(landscape = huc, #shapefile of landscape of interest
                 fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
                 fire_years = "Year", # label of the fire year column
-                start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
-                end_year = 2018, # Year after end of dataset (for MTBS: 2018)
+                start_year = 1984, # Year prior to start of dataset (severity data available starting 1985)
+                end_year = 2018, # Year after end of dataset 
                 decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                 out_raster = here('data', 'spatial','yose_fri', out_base)) #path for writing output rasters
 }
@@ -158,6 +157,7 @@ This can be done for a full landscape (e.g., a watershed) or buffered around sam
 ```{r, eval = F}
 
 ## Calculate pyrodviersity for each watershed
+source(here("code/pyrodiv_calc.R"))
 ## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {
   huc <- hucs[i,]
@@ -169,32 +169,31 @@ pd <- lapply(1:nrow(hucs), function(i) {
   mround <- function(x, base, digits){
         base*round(x/base, digits = digits)
       } 
-  fri_r <- paste0("data/spatial/yose_fri/fri_", id, ".tif") %>% 
-    raster() %>% 
+  fri_r <- here(paste0("data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+    rast() %>% 
     round(digits = 0)
-  sea_r <- paste0("data/spatial/yose_sea/sea_", id, ".tif") %>% 
-    raster() %>% 
+  sea_r <- here(paste0("data/spatial/yose_sea/sea_", id, ".tif")) %>% 
+    rast() %>% 
     round(digits = 1)
-  sev_r <- paste0("data/spatial/yose_sev/sev_", id, ".tif") %>% 
-    raster() %>% 
+  sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+    rast() %>% 
     mround(base = 5, digits = 1)
-  pat_r <- paste0("data/spatial/yose_pat/pat_", id, ".tif") %>% 
-    raster() %>% 
+  pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
+    rast() %>% 
     round(digits = 0)
   
   ## Bring in mask raster
-  flam_r <- paste0("data/spatial/yose_flam/flam_", id, ".tif") %>% 
-    raster()
+  flam_r <- here(paste0("data/spatial/yose_flam/flam_", id, ".tif")) %>% 
+    rast()
 
-source("code/pyrodiv_calc.R")
-d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths to trait rasters 
+d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths or rast files
                   mask = flam_r #optional mask layer path (e.g. remove non-flammable areas)
              )
 return(d)
 }) %>% 
   bind_rows()
 
-write.csv(pd, "data/yose_pyrodiv.csv", row.names = F)
+write.csv(pd, here("data/yose_pyrodiv.csv"), row.names = F)
 ```
 
 ```{r}
