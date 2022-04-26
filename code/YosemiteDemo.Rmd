@@ -10,8 +10,6 @@ knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 knitr::opts_knit$set(root.dir = "..")
 ```
 
-__there are some minor warnings to clean up and I seem to have fewer hucs this time than before for some reason?__
-
 
 # Quantifying Pyrodiversity  
 
