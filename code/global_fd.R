@@ -1,7 +1,7 @@
 ## Purpose: Calculate functional dispersion of fire regime trait(s) 
 ## Project: Pyrodiversity
 
-pyrodiv_calc <- function(
+global_fd <- function(
   traits, #vector of paths to trait rasters or rast objects
   frich = F, #logical, whether to also calculate function richness
   pca_axes = "max", #number of PC dimensions to use when calculating FRic

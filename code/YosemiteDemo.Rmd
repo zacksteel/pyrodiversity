@@ -157,7 +157,7 @@ This can be done for a full landscape (e.g., a watershed) or buffered around sam
 ```{r, eval = F}
 
 ## Calculate pyrodviersity for each watershed
-source(here("code/pyrodiv_calc.R"))
+source(here("code/global_fd.R"))
 ## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {
   huc <- hucs[i,]
@@ -186,7 +186,7 @@ pd <- lapply(1:nrow(hucs), function(i) {
   flam_r <- here(paste0("data/spatial/yose_flam/flam_", id, ".tif")) %>% 
     rast()
 
-d <- pyrodiv_calc(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths or rast files
+d <- global_fd(traits = c(fri_r, sea_r, sev_r, pat_r), #vector of paths or rast files
                   mask = flam_r #optional mask layer path (e.g. remove non-flammable areas)
              )
 return(d)
