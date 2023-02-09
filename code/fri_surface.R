@@ -5,7 +5,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
                         fires, #shapefile of fire perimeters including a year attribute
                         fire_years = "Year", # label of the fire year column
                         start_year, # Year prior to start of dataset (for landsat: 1983)
-                        end_year, # Year after end of dataset 
+                        end_year = NULL, # Year after end of dataset 
                         decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                         out_raster = NULL, #path if saving raster, if return
                         raster_template = "data/spatial/CBI_template.tif"
@@ -23,13 +23,19 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Which fires intersect with the landscape of interest?
-  keep <- suppressMessages(st_intersects(fires, landscape)) %>%
-    apply(1, any) 
-  fires <- fires[keep,]
+  # keep <- suppressMessages(st_intersects(fires, landscape)) %>%
+  #   apply(1, any) 
+  # fires <- fires[keep,]
+  fires <- fires[landscape,]
   
   ## assign fire year column name
   fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
   # fires <- rename(fires, Fire_Year = Year)
+  
+  ## if end year is not supplied use dataset
+  if(is.null(end_year)) {
+    end_year <- max(fires$Fire_Year) + 1
+  }
 
   ## landscape raster of start year
   land_r <- vect(landscape) %>% 
@@ -58,7 +64,8 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     } else {
 
     ## limit to landscape
-    fires_land <- suppressMessages(st_intersection(fires, landscape))
+    # fires_land <- suppressMessages(st_intersection(fires, landscape))
+      fires_land <- fires[landscape,]
     
     ## get all years
     years <- pull(fires_land, Fire_Year) %>%
@@ -86,11 +93,13 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## set up empty raster
     ysf_yrs <- lapply(fri_yrs, function(x) setValues(x, NA) )
     for(i in 2:length(fri_yrs)) {
+      ## memory intensive step, clean up
+      gc()
       ## make raster of most recent event
       rc <- rast(fri_yrs[i-1:i]) %>% 
         app(fun = max, na.rm = T)
 
-      ## years since most resent fire
+      ## years since most recent fire
       r <- fri_yrs[[i]] - rc
       ysf_yrs[[i]] <- r
     }
