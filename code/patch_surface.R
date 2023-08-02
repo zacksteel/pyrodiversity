@@ -16,6 +16,9 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   library(units)
   library(here)
   
+  ## some checks
+  if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
+  
   ## Pull in severity raster to use as template
   r_template <- rast(here(raster_template))
   
@@ -24,9 +27,7 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Which fires intersect with the landscape of interest?
-  keep <- suppressMessages(st_intersects(fires, landscape)) %>%
-    apply(1, any) 
-  fires <- fires[keep,] 
+  fires <- fires[landscape,]
   
   ## Create a landscape-wide empty raster 
   land_r <- vect(landscape) %>% 
@@ -145,11 +146,35 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
       max(stck, na.rm = T)
     }
     
-    w <- lapply(fire_order, function(x) {
-      ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
-      (1 - decay_rate) ^ (maxorder - x)
-    }) %>%
-      rast()
+    ## If decay rate is one (i.e., only interested in last fire/maxorder) then assign weighting directly. zero raised to anything returns a 1 here for some reason
+    if(decay_rate == 1) {
+      
+      w <- lapply(fire_order, function(x) {
+        ## which pixels were the last fire?
+        tmp.r <- maxorder == x
+        ## assign a 1
+        tmp.r[] <- ifelse(tmp.r[] == TRUE, 1, 0)
+        return(tmp.r)
+      }) %>% 
+        rast()
+      
+    } else 
+      ## for decay rates less than 1
+    {
+      w <- lapply(fire_order, function(x) {
+        ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+        ## exponent term makes the fire order relative the max (e.g., if there have been 3 fires and we are on the third it gets full weight)
+        (1 - decay_rate) ^ (maxorder - x)
+      }) %>%
+        ## 'stack' the list of rasters
+        rast()
+    }
+    
+    # w <- lapply(fire_order, function(x) {
+    #   ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+    #   (1 - decay_rate) ^ (maxorder - x)
+    # }) %>%
+    #   rast()
     
     ## stack severity layers
     patch_stack <- rast(patch_yrs)

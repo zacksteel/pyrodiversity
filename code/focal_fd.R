@@ -1,5 +1,5 @@
 ## Purpose: Calculate focal (with moving window) landscape functional diversity
-## Project: pyrodiv_trends
+## Project: pyrodiversity
 ## Upstream:
 ## Downstream:
 
@@ -8,7 +8,10 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
                     points, #optional point vector file to sample around, #### not yet implemented ####
                     w, #odd number window size (rows/columns), passed to terra::focalValues
                     metric = "FDis", #character vector of FD metrics to return. Options: 'nbsp', 'FRic', 'FEve', 'FDis'
-                    pca_axes = "max" #number of PC dimensions to use when calculating FRic
+                    pca_axes = "max", #number of PC dimensions to use when calculating FRic
+                    method = "fundiversity",
+                    na_replacement = T, #fundiversity will drop species that contain NAs; if TRUE na's will be replaced with the trait means
+                    out_raster = NULL
                     )
 {
   library(tidyverse)
@@ -19,10 +22,8 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
     traits = list(traits)
   }
   
-  #### add if names are null some generic naming
   #### add option to extract using point layer instead of full scene
   #### add option to pass either a list or multilayer SpatRaster file
-  #### add optional internal buffer to avoid dropping edge NA cells?
   
   ## add arbitrary names
   tr_names = sapply(1:length(traits), function(x) paste0('trait', x))
@@ -43,7 +44,7 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
     ## remove the position ID
     dplyr::select(-name) %>%
     ## remove instances with only NA traits
-    filter(if_any(2:last_col(), ~ !is.na(.))) %>% 
+    filter(if_any(2:last_col(), ~ !is.na(.))) %>%
     ## Count up species/unique fire histories in each community
     group_by_all() %>% 
     count() %>% 
@@ -76,69 +77,113 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   
   ## If rasters are very large = we have many 'communities' to consider run subsets in parallel
   abun_split = mutate(abun,
-                     gp = ceiling(row_number()/10000)) %>% 
+                     gp = ceiling(row_number()/10000)) %>%
+    rownames_to_column() %>% 
     group_split(gp, .keep = F) 
+  ## need rownames for fd_dis function
+  abun_split <- purrr::map(abun_split, ~column_to_rownames(.x))
   
-  library(foreach)
-  library(doParallel)
-  
-  #### Some issues when splitting the data results in a species not occurring in any community
-  #### How does this affect the outputs? Can we trick the function by adding in a dummy community then removing after?
-  #### Does trimming the species list affect FDis and FRic? It would affect FEve.
-  #### As we increase the number and resolution of traits this is likely to happen more and more
-  
-  registerDoParallel(1)  # use multicore, set to the number of our cores
-  tic()
-  div_l = foreach (i=1:length(abun_split)) %dopar% {
-    
-    library(FD)
-    
-    abun_sub = abun_split[i][[1]]
-    
-    div_sub = dbFD(tr, abun_sub, stand.x = T, 
-                   corr = "cailliez",
-                   calc.FRic = frich,
-                   m = pca_axes,
-                   calc.FGR = F,
-                   calc.CWM = F,
-                   calc.FDiv = F,
-                   messages = F)
-  }
-  toc()
-  
-  div = purrr::map(div_l, data.frame) %>% 
-    do.call(rbind, .)
-  
-  identical(div$FDis, is.numeric(div.full$FDis))
-  
-  ## remap diversity results to raster and return a multi-layer raster
-  rl = purrr::map(metric, ~rast(x = traits[[1]],
-                                vals = div[,.x]))
-  out = do.call(c, rl)
-  names(out) = metric
-  return(out)
-  
-  ## NA value causes problems. may only be a problem if NAs for all traits
-  tic()
-  div <- dbFD(tr, abun, stand.x = T, 
-              corr = "cailliez",
-              calc.FRic = frich,
-              m = pca_axes,
-              calc.FGR = F,
-              calc.CWM = F,
-              calc.FDiv = F,
-              messages = F)
-  toc()
-  
-  div.full = div
+  # library(foreach)
+  # library(doParallel)
+  # 
+  # #### Some issues when splitting the data results in a species not occurring in any community
+  # #### How does this affect the outputs? Can we trick the function by adding in a dummy community then removing after?
+  # #### Does trimming the species list affect FDis and FRic? It would affect FEve.
+  # #### As we increase the number and resolution of traits this is likely to happen more and more
+  # 
+  # registerDoParallel(1)  # use multicore, set to the number of our cores
+  # tic()
+  # div_l = foreach (i=1:length(abun_split)) %dopar% {
+  #   
+  #   library(FD)
+  #   
+  #   abun_sub = abun_split[i][[1]]
+  #   
+  #   div_sub = dbFD(tr, abun_sub, stand.x = T, 
+  #                  corr = "cailliez",
+  #                  calc.FRic = frich,
+  #                  m = pca_axes,
+  #                  calc.FGR = F,
+  #                  calc.CWM = F,
+  #                  calc.FDiv = F,
+  #                  messages = F)
+  # }
+  # toc()
+  # 
+  # div = purrr::map(div_l, data.frame) %>% 
+  #   do.call(rbind, .)
+  # 
+  # 
+  # ## remap diversity results to raster and return a multi-layer raster
+  # rl = purrr::map(metric, ~rast(x = traits[[1]],
+  #                               vals = div[,.x]))
+  # out = do.call(c, rl)
+  # names(out) = metric
+  # return(out)
   
 
   
-  ## remap diversity results to raster and return a multi-layer raster
-  rl = purrr::map(metric, ~rast(x = traits[[1]],
-                                vals = div[[.x]]))
+  
+  #### Testing out the Fundiversity version
+  if(method == "fundiversity")
+  {
+    library(fundiversity)
+    ## need to scale trait values first
+    scale2 <- function(x, na.rm = TRUE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
+    
+    tr2 <- mutate_all(tr, scale2)
+    
+    ## What to do with NAs?
+    if(na_replacement) {
+      tr2 <- mutate_all(tr2, replace_na, replace = 0)
+    }
+    
+    # future::plan(future::multisession, workers = 1)
+    ## for large landscapes split apart so as not to max out your RAM
+    if(length(abun_split) > 1) {
+      dis <- purrr::map(abun_split, ~fd_fdis(tr2, as.matrix(.x))) %>% 
+        bind_rows()
+    } else {
+      dis <- fd_fdis(tr2, as.matrix(abun))
+    }
+
+    ## Need to back-fill NAs before mapping to raster
+    dis2 <- mutate(dis, id = as.integer(str_sub(site, 4)))
+    dummy.fill <- data.frame(id = seq(1, ncell(traits[[1]])))
+    dis2 <- full_join(dis2, dummy.fill) %>% 
+      arrange(id)
+    
+    ## map values on
+    rl = purrr::map(metric, ~rast(x = traits[[1]],
+                                  vals = dis2[.x]))
+  } 
+  
+  if(method == "fd") 
+    {
+    ## NA value causes problems. may only be a problem if NAs for all traits
+    div <- dbFD(tr, abun, stand.x = T, 
+                corr = "cailliez",
+                calc.FRic = frich,
+                m = pca_axes,
+                calc.FGR = F,
+                calc.CWM = F,
+                calc.FDiv = F,
+                messages = F)
+    
+    ## remap diversity results to raster and return a multi-layer raster
+    rl = purrr::map(metric, ~rast(x = traits[[1]],
+                                  vals = div[[.x]]))
+  }
+  
   out = do.call(c, rl)
   names(out) = metric
+  
+  if(!is.null(out_raster)) {
+    writeRaster(out, filename = out_raster, overwrite = T)
+  }
+  
   return(out)
+  
+  
   
 }

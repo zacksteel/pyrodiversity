@@ -3,21 +3,19 @@ title: "Testing surface functions"
 output: html_notebook
 ---
 
-Testing improvements to surface generation functions.  
-
-
-
+# Testing improvements to surface generation functions.
 
 ```{r setup, include = F}
 knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 ```
 
-Load packages and functions  
+Load packages and functions
 
 ```{r}
 library(tidyverse)
 library(sf)
 library(raster)
+library(terra)
 library(tictoc)
 library(here)
 
@@ -27,7 +25,7 @@ source("../../code/sev_surface.R")
 source("../../code/patch_surface.R")
 ```
 
-Load yosemite data  
+## Testing speed improvements from transitioning to terra
 
 ```{r}
 ## read in shapefiles
@@ -37,7 +35,11 @@ yose_fires <- read_sf("../../data/spatial/yose_mtbs.shp")
 
 ## let's test with one huc10 (Headwaters Merced River)
 hmr = filter(hucs, Name == "Headwaters Merced River")
+htr = filter(hucs, Name == "Headwaters Tuolumne River")
+str = filter(hucs, Name == "South Fork Tuolumne River")
+```
 
+```{r}
 ## Testing new fri code
 tic() 
 fri_surface(landscape = hmr, #shapefile of landsape of interest
@@ -94,15 +96,121 @@ r = rast(here('data', 'scratch', 'pat_htr.tif'))
 r = rast(here('data', 'scratch', 'pat_hmr.tif'))
 ```
 
-original fri surface function takes 14.75 seconds for the hmr watershed  
+original fri surface function takes 14.75 seconds for the hmr watershed\
 with terra run time is only 5.29 seconds. minor differences at the pixel level, likely do to how rasterizing is done?
 
-Original sea surface function takes 14.21 seconds for the hmr watershed
-Updated version takes 3.93 seconds  
+Original sea surface function takes 14.21 seconds for the hmr watershed Updated version takes 3.93 seconds
 
-Original sev surface function takes 20.07 seconds for the hmr watershed
-Updated version takes 3.4 seconds
+Original sev surface function takes 20.07 seconds for the hmr watershed Updated version takes 3.4 seconds
 
-Original patch surface function takes 43.42 seconds for the htr watershed (hmr was taking > 1hr)
-Updated version takes 4.3 seconds!
+Original patch surface function takes 43.42 seconds for the htr watershed (hmr was taking \> 1hr) Updated version takes 4.3 seconds!
 
+## Adding a full (1) decay option to surface models  
+
+```{r}
+## read in shapefiles
+yose <- read_sf("../../data/spatial/yosemite.shp")
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+yose_fires <- read_sf("../../data/spatial/yose_mtbs.shp") 
+
+## let's test with one huc10 (Headwaters Merced River)
+hmr = filter(hucs, Name == "Headwaters Merced River")
+
+## Testing new fri code; 11.06 sec
+tic() 
+fri_surface(landscape = hmr, #shapefile of landsape of interest
+            fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+            fire_years = "Year", # label of the fire year column
+            start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
+            end_year = 2018, # Year after end of dataset (for MTBS: 2018)
+            decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
+            out_raster = here("data/scratch/fri_hmr.tif")) #path for writing output rasters
+toc()
+
+r <- rast(here("data/scratch/fri_hmr.tif"))
+
+## now try with a total decay; 8.5 sec
+tic() 
+fri_surface(landscape = hmr, #shapefile of landsape of interest
+            fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+            fire_years = "Year", # label of the fire year column
+            start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
+            end_year = 2018, # Year after end of dataset (for MTBS: 2018)
+            decay_rate = 1, # Importance decay rate of the "invisible mosaic", between [0,1)
+            out_raster = here("data/scratch/fri_hmr_decay1.tif")) #path for writing output rasters
+toc()
+
+r1 <- rast(here("data/scratch/fri_hmr_decay1.tif"))
+
+## and now dropping the first interval
+tic() 
+fri_surface(landscape = hmr, #shapefile of landsape of interest
+            fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+            fire_years = "Year", # label of the fire year column
+            drop_censored_int = T,
+            start_year = 1984, # Year prior to start of dataset (for landsat: 1983)
+            end_year = 2018, # Year after end of dataset (for MTBS: 2018)
+            decay_rate = 1, # Importance decay rate of the "invisible mosaic", between [0,1)
+            out_raster = here("data/scratch/fri_hmr_decay1_drop1.tif")) #path for writing output rasters
+toc()
+
+r1.drop <- rast(here("data/scratch/fri_hmr_decay1_drop1.tif"))
+```
+
+OK, now doing the same for severity
+
+```{r}
+## new sev code
+tic()
+r <- sev_surface(
+  landscape = hmr, #shapefile of landsape of interest
+  fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+  severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+  fire_years = "Year", # label of the fire year column
+  decay_rate = 0.5 # Importance decay rate of the "invisible mosaic", between [0,1))
+            ) 
+toc()
+
+## with a full decay (last fire only)
+tic()
+r1 <- sev_surface(
+  landscape = hmr, #shapefile of landsape of interest
+  fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+  severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+  fire_years = "Year", # label of the fire year column
+  decay_rate = 1 # Importance decay rate of the "invisible mosaic", between [0,1))
+            ) 
+toc()
+
+## different watershed
+tic()
+r2 <- sev_surface(
+  landscape = str, #shapefile of landsape of interest
+  fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+  severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+  fire_years = "Year", # label of the fire year column
+  decay_rate = 0.5 # Importance decay rate of the "invisible mosaic", between [0,1))
+            ) 
+toc()
+
+## old patch code
+## hmr takes a real long time (at least with the old code) so picking a simpler fire history
+htr = filter(hucs, Name == "Headwaters Tuolumne River")
+rp <- rast(here("data/scratch/pat_hmr.tif"))
+
+tic()
+r.5 <- patch_surface(landscape = hmr, #shapefile of landsape of interest
+              fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+              severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+              fire_years = "Year", # label of the fire year column
+              decay_rate = 0.5) # Importance decay rate of the "invisible mosaic", between [0,1)
+toc()
+
+tic()
+r1.0 <- patch_surface(landscape = str, #shapefile of landsape of interest
+              fires = yose_fires, #shapefile containing fire IDs associated with severity rasters
+              severity_dir = here("data/spatial/yose_mtbs_sev"), # directory where fire rasters are held
+              fire_years = "Year", # label of the fire year column
+              decay_rate = 1.0) # Importance decay rate of the "invisible mosaic", between [0,1)
+toc()
+```
