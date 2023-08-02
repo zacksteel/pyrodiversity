@@ -14,6 +14,9 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
   library(terra)
   library(lwgeom)
   
+  ## some checks
+  if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
+  
   ## Pull in severity raster to use as template
   r_template <- rast(here(raster_template))
   
@@ -22,9 +25,7 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Which fires intersect with the landscape of interest?
-  keep <- suppressMessages(st_intersects(fires, landscape)) %>%
-    apply(1, any) 
-  fires1 <- fires[keep,] 
+  fires1 <- fires[landscape,]
   
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires1) == 0) {
@@ -57,7 +58,6 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
       fire <- fires1[i,]
       id <- as.character(fire$Fire_ID)
       year <- pull(fire, {{fire_years}})
-      # year <- pull(fire, Fire_Year)
       
       ## Get cbi raster
       r <- rast(fire_files[[i]]) 
@@ -73,8 +73,6 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## get vector of burn years
     years <- pull(fires1, {{fire_years}}) %>%
       unique()
-    # years <- pull(fires, Fire_Year) %>%
-    #   unique()
     
     ## Created a raster for each year there was at least one fire
     sev_yrs <- lapply(years, function(x) {
@@ -89,13 +87,6 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
         ## set up SpatRasterCollection avoids awkward do.call
         rsrc <- sprc(fs)
         m <- mosaic(rsrc, fun = 'max')
-        
-        ## Set up awkward do.call for list of rasters
-        # names(fs)[1:2] <- c('x','y')
-        # fs$fun <- max # if overlapping fires use max severity
-        # fs$na.rm <- TRUE
-        # 
-        # m <- do.call(mosaic, fs)
       }
       
       ## Align with the landscape raster
@@ -133,11 +124,30 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
       max(stck, na.rm = T)
     }
     
-    w <- lapply(fire_order, function(x) {
-      ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
-      (1 - decay_rate) ^ (maxorder - x)
-    }) %>%
-      rast()
+    ## If decay rate is one (i.e., only interested in last fire/maxorder) then assign weighting directly. zero raised to anything returns a 1 here for some reason
+    if(decay_rate == 1) {
+
+      w <- lapply(fire_order, function(x) {
+        ## which pixels were the last fire?
+        tmp.r <- maxorder == x
+        ## assign a 1
+        tmp.r[] <- ifelse(tmp.r[] == TRUE, 1, 0)
+        return(tmp.r)
+      }) %>% 
+        rast()
+
+    } else 
+      ## for decay rates less than 1
+      {
+      w <- lapply(fire_order, function(x) {
+        ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+        ## exponent term makes the fire order relative the max (e.g., if there have been 3 fires and we are on the third it gets full weight)
+        (1 - decay_rate) ^ (maxorder - x)
+      }) %>%
+        ## 'stack' the list of rasters
+        rast()
+    }
+
     
     ## stack severity layers
     sev_stack <- rast(sev_yrs)

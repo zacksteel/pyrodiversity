@@ -15,6 +15,9 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
   library(terra)
   library(here)
   
+  ## some checks
+  if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
+  
   ## Pull in severity raster to use as template
   r_template <- rast(here(raster_template))
   
@@ -23,9 +26,7 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
   fires <- st_transform(fires, crs = st_crs(r_template))
   
   ## Which fires intersect with the landscape of interest?
-  keep <- suppressMessages(st_intersects(fires, landscape)) %>%
-    apply(1, any) 
-  fires <- fires[keep,]
+  fires <- fires[landscape,]
   
   ## assign fire year column name
   fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
@@ -113,11 +114,29 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
       max(stck, na.rm = T)
     }
     
-    w <- lapply(fire_order, function(x) {
-      ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
-      (1 - decay_rate) ^ (maxorder - x)
-    }) %>%
-      rast()
+    ## If decay rate is one (i.e., only interested in last fire/maxorder) then assign weighting directly. zero raised to anything returns a 1 here for some reason
+    if(decay_rate == 1) {
+      
+      w <- lapply(fire_order, function(x) {
+        ## which pixels were the last fire?
+        tmp.r <- maxorder == x
+        ## assign a 1
+        tmp.r[] <- ifelse(tmp.r[] == TRUE, 1, 0)
+        return(tmp.r)
+      }) %>% 
+        rast()
+      
+    } else 
+      ## for decay rates less than 1
+    {
+      w <- lapply(fire_order, function(x) {
+        ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+        ## exponent term makes the fire order relative the max (e.g., if there have been 3 fires and we are on the third it gets full weight)
+        (1 - decay_rate) ^ (maxorder - x)
+      }) %>%
+        ## 'stack' the list of rasters
+        rast()
+    }
     
     ## stack severity layers
     sea_stack <- rast(sea_yrs)

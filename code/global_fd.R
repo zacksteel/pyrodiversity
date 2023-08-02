@@ -38,11 +38,13 @@ global_fd <- function(
   
   ## get crosstabs as frequencies/abundances of unique trait combos
   if(nlyr(ts) == 1) {
-    ctab <- freq(ts, digits = 2) %>% 
-      as.data.frame()
-    names(ctab) <- c(names(ts), "Freq")
+    ctab <- freq(ts, digits = 3) %>% 
+      as.data.frame() %>% 
+      select(value, Freq = count)
+    # names(ctab) <- c(names(ts), "Freq")
   } else {
-    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) 
+    ctab <- crosstab(ts, digits = 3, long = T, useNA = T) %>% 
+      rename(Freq = n)
   }
   
   ## remove instances with only NA traits (don't consider the last Freq column)
@@ -65,13 +67,17 @@ global_fd <- function(
   Severity - 0.5 CBI increments; Seasonality - 0.1 increments."))
     }
   
+  #### On small landscapes (e.g., around points) this fudge cell has a meaningful impact
+  #### Need to find a better way to address this bug
   ## when only one value and NA (e.g. season layer), throws an error
   ## adding a single fudge cell works around this without inflating dispersion
-  cmean <- colMeans(ctab, na.rm = T)
-  add <- cmean + cmean/1000
-  add['Freq'] <- 1
-
-  ctab2 <- rbind(ctab, add)
+  # cmean <- colMeans(ctab, na.rm = T)
+  # add <- cmean + cmean/1000
+  # add['Freq'] <- 1
+  # 
+  # ctab2 <- rbind(ctab, add)
+  
+  ctab2 <- ctab
   
   # add "species" names
   row.names(ctab2) <- sapply(1:nrow(ctab2), function(x) paste0("sp",x))
