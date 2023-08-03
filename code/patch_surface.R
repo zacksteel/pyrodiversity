@@ -20,7 +20,11 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
   if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
   
   ## Pull in severity raster to use as template
-  r_template <- rast(here(raster_template))
+  if(is.character(raster_template)) {
+    r_template <- rast(here(raster_template))
+  } else {
+    r_template <- raster_template
+  }
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))

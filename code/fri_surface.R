@@ -9,7 +9,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
                         end_year = NULL, # Year after end of dataset 
                         decay_rate = 0.5, # Importance decay rate of the "invisible mosaic", between [0,1)
                         out_raster = NULL, #path if saving raster, if return
-                        raster_template = "data/spatial/CBI_template.tif"
+                        raster_template = "data/spatial/CBI_template.tif" # raster or path to raster
   ) {
   library(tidyverse)
   library(sf)
@@ -20,7 +20,12 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
   
   ## Pull in severity raster to use as template
-  r_template <- rast(here(raster_template))
+  if(is.character(raster_template)) {
+    r_template <- rast(here(raster_template))
+  } else {
+    r_template <- raster_template
+  }
+  
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
