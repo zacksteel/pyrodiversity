@@ -26,6 +26,16 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     r_template <- raster_template
   }
   
+  ## assign fire year column name
+  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
+  
+  ## if end year is not supplied use dataset
+  if(is.null(end_year)) {
+    end_year <- max(fires$Fire_Year) + 1
+  }
+  
+  ## Only keep fires that occurred between the start and end years
+  fires <- filter(fires, Fire_Year > start_year, Fire_Year < end_year)
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
@@ -34,14 +44,6 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   ## Which fires intersect with the landscape of interest?
   fires <- fires[landscape,]
   
-  ## assign fire year column name
-  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
-  
-  ## if end year is not supplied use dataset
-  if(is.null(end_year)) {
-    end_year <- max(fires$Fire_Year) + 1
-  }
-
   ## landscape raster of start year
   land_r <- vect(landscape) %>% 
     rast(resolution = res(r_template), vals = start_year) %>% 
@@ -59,6 +61,11 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   ## If no fires within the landscape skip a lot and treat the landscape as a single patch
   if(nrow(fires) == 0) {
     message("No fires intersect landscape")
+    
+    ## if dropping first interval we don't have any intervals
+    if(drop_censored_int) {
+      noburn_r <- setValues(noburn_r, NA)
+    }
     
     if(is.null(out_raster)) {
       return(noburn_r)
