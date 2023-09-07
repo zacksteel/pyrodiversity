@@ -1,0 +1,151 @@
+## Purpose: Calculate a fire order-weighted fire size surface across a landscape
+## Author: Zack Steel
+
+size_surface <- function(landscape, # feature(s) that represent the landscape of interest
+                           fires, # features representing fire severity
+                           fire_years = "Year", # label of the fire year column
+                           decay_rate = 0.5, # Between [0,1); a rate of .5 means each subsequent value recieves 1/2 of the previous
+                           out_raster = NULL, #path if saving raster, if return
+                           raster_template = "data/spatial/CBI_template.tif"
+                        ) 
+  {
+  library(tidyverse)
+  library(sf)
+  library(terra)
+  library(here)
+  
+  ## some checks
+  if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
+  
+  ## Pull in severity raster to use as template
+  if(is.character(raster_template)) {
+    r_template <- rast(here(raster_template))
+  } else {
+    r_template <- raster_template
+  }
+  
+  ## Conform CRS of features to the template
+  landscape <- st_transform(landscape, crs = st_crs(r_template))
+  fires <- st_transform(fires, crs = st_crs(r_template))
+  
+  ## Which fires intersect with the landscape of interest?
+  fires <- fires[landscape,]
+  
+  ## assign fire year column name
+  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
+  
+  noburn_r <- vect(landscape) %>% 
+    rast(resolution = res(r_template), vals = NA)
+  
+  ## If no fires within the landscape skip a lot and treat the landscape as a single patch
+  if(nrow(fires) == 0) {
+    warning("No fires intersect landscape, returning NA landscape")
+    
+    if(is.null(out_raster)) {
+      return(noburn_r)
+    } else {
+      writeRaster(noburn_r, filename = out_raster, overwrite = T)
+    }
+  }
+    ## if there are fires
+  else {
+
+    ## add NA size to base landscape
+    landscape <- mutate(landscape,
+                        hectares = NA) %>% 
+      dplyr::select(hectares)
+    
+    ## simplify to just year and calculate hectares attributes, 
+    f_ha <- dplyr::select(fires, year = Fire_Year) %>%
+      mutate(m2 = st_area(.),
+             hectares = set_units(m2, ha),
+             hectares = as.numeric(hectares))
+    
+    ## get all years
+    years <- pull(f_ha, year) %>%
+      unique() %>% 
+      sort()
+    
+    ## Created a raster for each year there was at least one fire
+    size_yrs <- lapply(years, function(x) {
+      r <- filter(f_ha, year == x) %>% 
+        st_collection_extract("POLYGON") %>% 
+        vect() %>% 
+        terra::rasterize(y = noburn_r, field = "hectares") %>% 
+        suppressWarnings()
+      
+      ## Align with the landscape raster
+      return(resample(r, noburn_r))
+      
+    })
+    
+    ## Assign burned areas as 1
+    burned_l <- lapply(size_yrs, function(x) {
+      x[!is.na(x)] <- 1
+      x[is.na(x)] <- 0
+      return(x)
+    })
+    ## Add them up to get the cummulative number of fires
+    fire_cnt <- Reduce("+", burned_l, accumulate = T)
+    
+    ## Convert back to NA if a pixel didn't burn in a given year
+    fire_order <- lapply(1:length(burned_l), function(x) {
+      x <- burned_l[[x]] * fire_cnt[[x]]
+      x[x == 0] <- NA
+      return(x)
+    })
+    
+    ## Created a stack of weight rasters 
+    ## create raster of max fires so we are flipping the weight and 
+    ## making recent burns more important
+    stck <- rast(fire_order)
+    maxorder <- if(nlyr(stck) == 1) {1} else {
+      max(stck, na.rm = T)
+    }
+    
+    ## If decay rate is one (i.e., only interested in last fire/maxorder) then assign weighting directly. zero raised to anything returns a 1 here for some reason
+    if(decay_rate == 1) {
+      
+      w <- lapply(fire_order, function(x) {
+        ## which pixels were the last fire?
+        tmp.r <- maxorder == x
+        ## assign a 1
+        tmp.r[] <- ifelse(tmp.r[] == TRUE, 1, 0)
+        return(tmp.r)
+      }) %>% 
+        rast()
+      
+    } else 
+      ## for decay rates less than 1
+    {
+      w <- lapply(fire_order, function(x) {
+        ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
+        ## exponent term makes the fire order relative the max (e.g., if there have been 3 fires and we are on the third it gets full weight)
+        (1 - decay_rate) ^ (maxorder - x)
+      }) %>%
+        ## 'stack' the list of rasters
+        rast()
+    }
+    
+    ## stack size layers
+    size_stack <- rast(size_yrs)
+    
+    ## Get weighted average
+    weighted_size <- if(nlyr(size_stack) == 1) {size_yrs[[1]]} else {
+      weighted.mean(size_stack, w, na.rm = T)}
+    
+    ## Keep just the area within the buffered landscape
+    land_size <- crop(weighted_size, vect(landscape)) %>% 
+      mask(vect(landscape))
+    
+    ## Return raster to user if path is not provided for writing raster
+    if(is.null(out_raster)) {
+      return(land_size)
+    } else {
+      writeRaster(land_size, filename = out_raster, overwrite = T)
+    }
+    
+    
+  }
+  
+}
