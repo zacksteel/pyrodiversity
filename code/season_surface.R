@@ -86,7 +86,7 @@ season_surface <- function(landscape, # feature(s) that represent the landscape 
       r <- filter(f_day, year == x) %>% 
         st_collection_extract("POLYGON") %>% 
         vect() %>% 
-        terra::rasterize(y = noburn_r, fun = "last", field = "jday") %>% 
+        terra::rasterize(y = noburn_r, fun = "max", field = "jday") %>% 
         suppressWarnings()
       
       ## Align with the landscape raster

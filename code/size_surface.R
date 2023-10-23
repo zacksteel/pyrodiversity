@@ -13,6 +13,7 @@ size_surface <- function(landscape, # feature(s) that represent the landscape of
   library(sf)
   library(terra)
   library(here)
+  library(units)
   
   ## some checks
   if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
