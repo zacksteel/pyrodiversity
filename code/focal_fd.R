@@ -5,6 +5,7 @@
 
 focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent and resolution
                     # tr_names = NULL, #character vector of trait names
+                    tr_wt, # relative weights for traits if using the FD package
                     points, #optional point vector file to sample around, #### not yet implemented ####
                     w, #odd number window size (rows/columns), passed to terra::focalValues
                     metric = "FDis", #character vector of FD metrics to return. Options: 'nbsp', 'FRic', 'FEve', 'FDis'
@@ -17,6 +18,9 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   library(tidyverse)
   library(terra)
   library(FD)
+  
+  ## fundiversity functions cannot weight traits explicitly (test indirect method via abundance)
+  if(exists('tr_wt') & method == "fundiversity") stop("fundiversity functions cannot weight traits explicitly. Remove weighting ('tr_wt' argument) or use 'FD' method")
   
   if(class(traits) != 'list') {
     traits = list(traits)
@@ -161,7 +165,9 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   if(method == "fd") 
     {
     ## NA value causes problems. may only be a problem if NAs for all traits
-    div <- dbFD(tr, abun, stand.x = T, 
+    div <- dbFD(tr, abun, 
+                w = tr_wt,
+                stand.x = T, 
                 corr = "cailliez",
                 calc.FRic = frich,
                 m = pca_axes,

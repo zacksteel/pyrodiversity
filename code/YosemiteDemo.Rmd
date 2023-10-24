@@ -154,7 +154,7 @@ This can be done for a full landscape (e.g., a watershed) or buffered around sam
 
 ```{r, eval = F}
 
-## Calculate pyrodviersity for each watershed
+## Calculate pyrodiversity for each watershed
 source(here("code/global_fd.R"))
 ## This block takes about an hour to run
 pd <- lapply(1:nrow(hucs), function(i) {

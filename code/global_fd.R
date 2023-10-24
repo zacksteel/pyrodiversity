@@ -3,6 +3,7 @@
 
 global_fd <- function(
   traits, #vector of paths to trait rasters or rast objects
+  tr_wt, # relative weights for traits
   frich = F, #logical, whether to also calculate function richness
   pca_axes = "max", #number of PC dimensions to use when calculating FRic
   mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
@@ -47,9 +48,12 @@ global_fd <- function(
       rename(Freq = n)
   }
   
+  ## dbFD cannot handle a trait with one or zero non-na values
+  cnt.vals <- purrr::map(ctab, ~length(unique(na.omit(.x)))) < 2
+  if(TRUE %in% cnt.vals) stop(paste0("Trait ", which(cnt.vals), " has one or zero unique non-NaN values. This breaks the functional diversity calculation."))
+  
   ## remove instances with only NA traits (don't consider the last Freq column)
   ctab <- filter(ctab, if_any(1:last_col()-1, ~ !is.na(.)))
-
   
   # ctab <- ctab %>% 
   #   mutate(nacnt = rowSums(is.na(.))) %>% 
@@ -91,7 +95,9 @@ global_fd <- function(
   traits2 <- dplyr::select(ctab2, -Freq)
   
   ## run diversity function
-  div <- dbFD(traits2, abun, stand.x = T, 
+  div <- dbFD(traits2, abun, 
+              w = tr_wt,
+              stand.x = T, 
               corr = "cailliez",
               calc.FRic = frich, 
               m = pca_axes,
