@@ -14,17 +14,74 @@ Load packages and functions
 ```{r}
 library(tidyverse)
 library(sf)
-library(raster)
+# library(raster)
 library(terra)
 library(tictoc)
 library(here)
+library(mapview)
 
 source("../../code/fri_surface.R")
 source("../../code/season_surface.R")
 source("../../code/sev_surface.R")
 source("../../code/patch_surface.R")
+source("../../code/nfires_surface.R")
 
 ```
+
+## Adding a times burned surface function
+
+```{r}
+## bring in fire perimeters, based on 2019 FRAP
+pers <- read_sf(here('data', 'spatial', 'firep.shp'))
+
+## eventual function will have a year range parameter for filtering. This has 1985-2019, which is fine for testing
+
+## As usual test w/ part of YOSE
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+hmr = filter(hucs, Name == "Headwaters Merced River") %>% 
+  ## match crs
+  st_transform(crs = st_crs(pers))
+
+## Limit by landscape of interest
+pers1 <- pers[hmr,] %>% 
+  ## make years numeric if not already
+  mutate(Fire_Year = as.numeric(!! (sym(fire_years))))
+
+# Create raster template 
+r <- rast(ext = ext(pers1), res = 30, crs = crs(pers1))
+
+# Initialize raster values to 0  
+r[] <- 0
+
+# Loop through polygon years
+yrs <- unique(pers1$Fire_Year) %>% 
+  sort()
+
+for(yr in yrs){
+
+  ## pull out and dissolve year
+  pers.yr <- filter(pers1, Fire_Year == yr) %>% 
+    summarise() %>% 
+    mutate(value = 1)
+  
+  # Convert polygon to raster
+  pi <- rasterize(pers.yr, r, field = "value") 
+  
+  # Add 1 to cells where polygon raster == 1
+  r[pi == 1] <- r[pi == 1] + 1
+  
+}
+
+plot(r)
+
+## try with new function
+source("../../code/nfires_surface.R")
+r2 <- nfires_surface(landscape = hmr,
+                     fires = read_sf(here('data', 'spatial', 'firep.shp')),
+                     year_lab = "YEAR_",
+                     return_rast = T)
+```
+
 
 ## Adding weights agrument to FD functions  
 
