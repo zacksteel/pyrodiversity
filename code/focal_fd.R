@@ -5,7 +5,7 @@
 
 focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent and resolution
                     # tr_names = NULL, #character vector of trait names
-                    tr_wt, # relative weights for traits if using the FD package
+                    tr_wt = NULL, # relative weights for traits if using the FD package
                     points, #optional point vector file to sample around, #### not yet implemented ####
                     w, #odd number window size (rows/columns), passed to terra::focalValues
                     metric = "FDis", #character vector of FD metrics to return. Options: 'nbsp', 'FRic', 'FEve', 'FDis'
@@ -20,7 +20,7 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   library(FD)
   
   ## fundiversity functions cannot weight traits explicitly (test indirect method via abundance)
-  if(exists('tr_wt') & method == "fundiversity") stop("fundiversity functions cannot weight traits explicitly. Remove weighting ('tr_wt' argument) or use 'FD' method")
+  if(!is.null(tr_wt) & method == "fundiversity") stop("fundiversity functions cannot weight traits explicitly. Remove weighting ('tr_wt' argument) or use 'FD' method")
   
   if(class(traits) != 'list') {
     traits = list(traits)
@@ -34,10 +34,12 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   
   ## slightly inelegant way to using multiple layers
   ctab = tibble(name = tr_names, rast = traits) %>% 
+    #focalValues returns a row for each cell ("community") w/ columns representing all neighbor values within window
     mutate(ctab = purrr::map2(rast, name, ~focalValues(.x, w = w) %>% 
                                 as.data.frame() %>% 
                                 rownames_to_column(var = "com") %>% 
                                 mutate(com = as.integer(com)) %>% 
+                                ## make long but hold onto com/cell values
                                 pivot_longer(-com, values_to = "value") %>% 
                                 mutate(trait = .y))) %>% 
     ## combine counts from each trait

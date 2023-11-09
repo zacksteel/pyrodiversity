@@ -28,6 +28,32 @@ source("../../code/nfires_surface.R")
 
 ```
 
+## Experimenting w/ circular windows for funcitonal diversity calculation  
+
+digging into the focal_fd code again. The idea would be to down-weight corner cells by adjusting their abundance or maybe just turning those cells to NA. I was hoping to use the focalMat function to do this, but I don't htink it works well with focalValues; it's meant for focal function. How would one flag those corner cells in a programatic way?
+
+```{r}
+## Set up single raster run
+r <- rast(nr=10, nc=10, crs='+proj=utm +zone=12')
+values(r) <- sample(1:3, size = 100, replace = T)
+values(r) <- c(rep(1:10, 5), rep(10:1, 5))
+
+source('../../code/focal_fd.R')
+trash = focal_fd(traits = r,
+                 w = 5)
+
+## Add another
+## multiple layers/traits
+r2 = rast(nr=5, nc=5, crs='+proj=utm +zone=12')
+values(r2) = round(rnorm(25), 0)
+
+trash2 = focal_fd(traits = list(r, r2),
+                  tr_names = c('fake1', 'fake2'),
+                  w = 3,
+                  metric = c("FDis", "FEve"))
+```
+
+
 ## Adding a times burned surface function
 
 ```{r}
@@ -86,6 +112,11 @@ r2 <- nfires_surface(landscape = hmr,
 ## Adding weights agrument to FD functions  
 
 ```{r}
+library(tidyverse)
+library(terra)
+library(sf)
+library(here)
+library(tictoc)
 ## read in trait surfaces for one huc
 hucs <- read_sf("../../data/spatial/yose_sheds.shp")
 id = filter(hucs, Name == "Headwaters Tuolumne River")$HUC10
