@@ -4,7 +4,6 @@
 focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent and resolution
                     # tr_names = NULL, #character vector of trait names
                     tr_wt = NULL, # relative weights for traits if using the FD package
-                    points, #optional point vector file to sample around, #### not yet implemented ####
                     w, #odd number window size (rows/columns), passed to terra::focalValues
                     metric = "FDis", #character vector of FD metrics to return. Options: 'nbsp', 'FRic', 'FEve', 'FDis'
                     pca_axes = "max", #number of PC dimensions to use when calculating FRic
@@ -23,8 +22,7 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   if(class(traits) != 'list') {
     traits = list(traits)
   }
-  
-  #### add option to extract using point layer instead of full scene
+
   #### add option to pass either a list or multilayer SpatRaster file
   
   ## add arbitrary names
