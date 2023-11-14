@@ -1,0 +1,147 @@
+---
+title: "fd_tests"
+format: html
+editor: visual
+---
+
+## Testing improvements to the function diversity functions
+
+Load packages and functions
+
+```{r}
+library(tidyverse)
+library(sf)
+library(terra)
+library(tictoc)
+library(here)
+library(mapview)
+
+source(here("code/global_fd.R"))
+```
+
+## Building out a point_fd function
+
+```{r}
+## read in trait surfaces for one huc
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+hmr = filter(hucs, Name == "Headwaters Merced River")
+id <- hmr$HUC10
+
+## let's make some sample points
+pts0 <- st_sample(hmr, size = 30, type = "regular")
+st_crs(pts0) <- st_crs(hmr)
+
+## function parameters
+# points # sf or vect object of points
+  # traits #vector of paths to trait rasters or rast objects
+  # tr_wt # relative weights for traits
+# land_radius # radius of the local landscape to consider for functional diversity, units are those of the length unit of the trait crs
+  # frich = F #logical, whether to also calculate function richness
+  # pca_axes = "max" #number of PC dimensions to use when calculating FRic
+  # mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
+
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+
+fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+  round(digits = 0)
+sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+  rast() %>% 
+  mround(base = 5, digits = 1)
+pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
+  rast() %>% 
+  round(digits = 0)
+
+
+
+## testing
+source(here("code/point_fd.R"))
+
+fd100 <- point_fd(
+  points <- pts0,
+  traits <- c(fri_r, sev_r, pat_r),
+  tr_wt <- NULL,
+  land_radius <- 100,
+  frich <- F,
+  pca_axes <- "max",
+  mask <- NULL
+)
+
+tic() #1.2 sec
+fd500  <- point_fd(
+  points <- pts0,
+  traits <- c(fri_r, sev_r, pat_r),
+  tr_wt <- NULL,
+  land_radius <- 500,
+  frich <- F,
+  pca_axes <- "max",
+  mask <- NULL
+)
+toc()
+
+tic() #2.11 sec
+fd1000  <- point_fd(
+  points <- pts0,
+  traits <- c(fri_r, sev_r, pat_r),
+  tr_wt <- NULL,
+  land_radius <- 1000,
+  frich <- F,
+  pca_axes <- "max",
+  mask <- NULL
+)
+toc()
+
+fd50 <- point_fd(
+  points <- pts0,
+  traits <- c(fri_r, sev_r, pat_r),
+  tr_wt <- NULL,
+  land_radius <- 50,
+  frich <- F,
+  pca_axes <- "max",
+  mask <- NULL
+)
+
+trash <- bind_cols(pts0, fd100) %>% 
+  st_as_sf()
+plot(sev_r)
+plot(trash[,"FDis"], add = T)
+```
+
+The code above returns NA values when there is no variation among any of the traits within the defined radius. Depending on the metric we may want to consider this zero (e.g., FDis) whereas for others it may make sense to keep it as NA (FEve)
+
+## Adding weights agrument to FD functions
+
+```{r}
+## read in trait surfaces for one huc
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+id = filter(hucs, Name == "Headwaters Tuolumne River")$HUC10
+
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+  
+fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+  round(digits = 0)
+sea_r <- rast(paste0("../../data/spatial/yose_sea/sea_", id, ".tif")) %>% 
+  round(digits = 1)
+
+sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+  rast() %>% 
+  mround(base = 5, digits = 1)
+pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
+  rast() %>% 
+  round(digits = 0)
+
+## Calculate pyrodiversity for each watershed with equal weights
+tic()
+d <- global_fd(traits = c(fri_r, sev_r, pat_r) #vector of paths or rast files
+             )
+toc()
+
+## Now with different weights
+d123 <- global_fd(traits = c(fri_r, sev_r, pat_r),
+               tr_wt = c(1,2,3))
+d010 <- global_fd(traits = c(fri_r, sev_r, pat_r),
+               tr_wt = c(0,1,0))
+```

@@ -1,7 +1,5 @@
 ## Purpose: Calculate focal (with moving window) landscape functional diversity
 ## Project: pyrodiversity
-## Upstream:
-## Downstream:
 
 focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent and resolution
                     # tr_names = NULL, #character vector of trait names
