@@ -19,7 +19,9 @@ global_fd <- function(
   {
     ts <- traits
   }
-  # ts <- stack(traits)
+  
+  ## if null trait weights, force an equal weight
+  if(is.null(tr_wt)) {tr_wt <- rep(1, nlyr(ts))}
   
   if(!is.null(mask)) {
     if(class(mask) == "SpatRaster") {m <- mask} else 

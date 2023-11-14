@@ -3,7 +3,7 @@ title: "Testing surface functions"
 output: html_notebook
 ---
 
-# Testing improvements to pyrodiversity functions.
+# Testing improvements to pyrodiversity surface functions.
 
 ```{r setup, include = F}
 knitr::opts_chunk$set(warning=FALSE, message=FALSE)
@@ -80,44 +80,6 @@ r2 <- nfires_surface(landscape = hmr,
                      fires = read_sf(here('data', 'spatial', 'firep.shp')),
                      year_lab = "YEAR_",
                      return_rast = T)
-```
-
-
-## Adding weights agrument to FD functions  
-
-```{r}
-## read in trait surfaces for one huc
-hucs <- read_sf("../../data/spatial/yose_sheds.shp")
-id = filter(hucs, Name == "Headwaters Tuolumne River")$HUC10
-
-mround <- function(x, base, digits){
-      base*round(x/base, digits = digits)
-} 
-  
-fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
-  round(digits = 0)
-sea_r <- rast(paste0("../../data/spatial/yose_sea/sea_", id, ".tif")) %>% 
-  round(digits = 1)
-
-sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
-  rast() %>% 
-  mround(base = 5, digits = 1)
-pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
-  rast() %>% 
-  round(digits = 0)
-
-## Calculate pyrodiversity for each watershed with equal weights
-source(here("code/global_fd.R"))
-tic()
-d <- global_fd(traits = c(fri_r, sev_r, pat_r) #vector of paths or rast files
-             )
-toc()
-
-## Now with different weights
-d123 <- global_fd(traits = c(fri_r, sev_r, pat_r),
-               tr_wt = c(1,2,3))
-d010 <- global_fd(traits = c(fri_r, sev_r, pat_r),
-               tr_wt = c(0,1,0))
 ```
 
 
@@ -310,6 +272,7 @@ r1.0 <- patch_surface(landscape = str, #shapefile of landsape of interest
               decay_rate = 1.0) # Importance decay rate of the "invisible mosaic", between [0,1)
 toc()
 ```
+
 Now let's add a new surface function for fire size. Should be able to adapt the fri_surface function.  
 
 ```{r}

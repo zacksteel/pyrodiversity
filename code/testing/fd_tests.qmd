@@ -1,0 +1,173 @@
+---
+title: "fd_tests"
+format: html
+editor: visual
+---
+
+## Testing improvements to the function diversity functions
+
+Load packages and functions
+
+```{r}
+library(tidyverse)
+library(sf)
+library(terra)
+library(tictoc)
+library(here)
+library(mapview)
+
+source(here("code/global_fd.R"))
+```
+
+## Building out a point_fd function
+
+```{r}
+## read in trait surfaces for one huc
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+hmr = filter(hucs, Name == "Headwaters Merced River")
+id <- hmr$HUC10
+
+## let's make some sample points
+pts0 <- st_sample(hmr, size = 30, type = "regular")
+st_crs(pts0) <- st_crs(hmr)
+
+## function parameters
+# points # sf or vect object of points
+  # traits #vector of paths to trait rasters or rast objects
+  # tr_wt # relative weights for traits
+# land_radius # radius of the local landscape to consider for functional diversity, units are those of the length unit of the trait crs
+  # frich = F #logical, whether to also calculate function richness
+  # pca_axes = "max" #number of PC dimensions to use when calculating FRic
+  # mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
+
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+
+fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+  round(digits = 0)
+sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+  rast() %>% 
+  mround(base = 5, digits = 1)
+pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
+  rast() %>% 
+  round(digits = 0)
+
+points <- pts0
+traits <- c(fri_r, sev_r, pat_r)
+tr_wt <- NULL
+land_radius <- 100
+frich <- F
+pca_axes <- "max"
+mask <- NULL
+
+## Start of the function
+
+## read in necessary libraries and global_fd function
+library(tidyverse)
+library(sf)
+library(terra)
+
+#### sensitive to location of this function; need to fix if making into a package
+source(here("code/global_fd.R"))
+
+## Read in rasters
+if(class(traits) != 'SpatRaster') {
+  ts <- rast(traits)
+} else
+{
+  ts <- traits
+}
+
+## make sure points are in vect format and the same crs as traits
+if(!("SpatVector" %in% class(points))) {
+  points <- vect(points)
+}
+
+if(crs(points) != crs(traits)) {
+  points <- project(points, crs(traits)[1])
+}
+
+## buffer the points per the user specified width and shape
+pts.buf <- buffer(points, width = land_radius)
+
+## complete the rest on a point by point basis
+d <- data.frame()
+
+for(i in 1:length(pts.buf)) {
+  pt <- pts.buf[i,]
+  
+  ts.sm <- crop(ts, pt) %>% 
+    # touches = F means that a cell whose center is not within the circle is excluded
+    mask(pt, touches = F)
+  
+  ## if no variation left in a trait drop it
+  mm <- minmax(ts.sm)
+  mm <- mm[2,] - mm[1,]
+  keep <- ifelse(mm == 0, FALSE, TRUE)
+  
+  ## if none left move on
+  if(TRUE %in% keep) {
+      ts.sm <- ts.sm[[keep]]
+  ## same for trait weights if not null
+  if(!is.null(tr_wt)) {tr_wt <- tr_wt[keep]}
+  
+  nts <- nlyr(ts.sm)
+  
+  ## Run through global_fd
+  d.sub <- global_fd(traits = ts.sm,
+                     tr_wt = tr_wt,
+                     frich = frich,
+                     pca_axes = "max",
+                     mask = mask)
+  d.sub$ntraits <- nlyr(ts.sm)
+  
+  ## add to the running list
+  d <- bind_rows(d, d.sub)
+  } else {
+    d.sub <- data.frame(ntraits = 0)
+    d <- bind_rows(d, d.sub)
+  }
+
+}
+
+
+```
+The code above returns NA values when there is no variation among any of the traits within the defined radius. Depending on the metric we may want to consider this zero (e.g., FDis) whereas for others it may make sense to keep it as NA (FEve)
+
+## Adding weights agrument to FD functions  
+
+```{r}
+## read in trait surfaces for one huc
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+id = filter(hucs, Name == "Headwaters Tuolumne River")$HUC10
+
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+  
+fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+  round(digits = 0)
+sea_r <- rast(paste0("../../data/spatial/yose_sea/sea_", id, ".tif")) %>% 
+  round(digits = 1)
+
+sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+  rast() %>% 
+  mround(base = 5, digits = 1)
+pat_r <- here(paste0("data/spatial/yose_pat/pat_", id, ".tif")) %>% 
+  rast() %>% 
+  round(digits = 0)
+
+## Calculate pyrodiversity for each watershed with equal weights
+tic()
+d <- global_fd(traits = c(fri_r, sev_r, pat_r) #vector of paths or rast files
+             )
+toc()
+
+## Now with different weights
+d123 <- global_fd(traits = c(fri_r, sev_r, pat_r),
+               tr_wt = c(1,2,3))
+d010 <- global_fd(traits = c(fri_r, sev_r, pat_r),
+               tr_wt = c(0,1,0))
+```
+
