@@ -15,6 +15,7 @@ point_fd <- function(
   library(tidyverse, quietly = T, warn.conflicts = F, verbose = F)
   library(sf, quietly = T, warn.conflicts = F, verbose = F)
   library(terra, quietly = T, warn.conflicts = F, verbose = F)
+  library(here, quietly = T, warn.conflicts = F, verbose = F)
   
   #### sensitive to location of this function; need to fix if making into a package
   source(here("code/global_fd.R"))
