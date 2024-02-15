@@ -98,12 +98,24 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
       keep <- sapply(rasters, names) == x
       fs <- rasters[keep]
       
-      ## Mosaic if more than one, otherwise unlist and return
+      ## Merge (mosaic sometimes fails) if more than one, otherwise unlist and return
       if(length(fs) == 1) {m <- fs[[1]]} else
       {
         ## set up SpatRasterCollection avoids awkward do.call
         rsrc <- sprc(fs)
-        m <- mosaic(rsrc, fun = 'max')
+        ## use try catch around the following function to capture warnings
+        tryCatch({
+          # m <- mosaic(rsrc, fun = 'max')
+          m <- merge(rsrc)
+        },
+        warning = function(w) {
+          # Print custom message and stop the script
+          print("A warning occurred during the merge operation. Stopping the script.")
+          # Optionally, print the original warning message
+          print(conditionMessage(w))
+          # Stop execution
+          stop("Script stopped due to a warning in merge operation.")
+        })
       }
       
       ## Convert to features with standard cut-offs from Miller and Thode 2007
