@@ -174,12 +174,6 @@ patch_surface <- function(landscape, # feature(s) that represent the landscape o
         rast()
     }
     
-    # w <- lapply(fire_order, function(x) {
-    #   ## exponentiating to zero gives a weight of 1, higher numbers get lower weights
-    #   (1 - decay_rate) ^ (maxorder - x)
-    # }) %>%
-    #   rast()
-    
     ## stack severity layers
     patch_stack <- rast(patch_yrs)
     
