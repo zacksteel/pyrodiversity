@@ -40,11 +40,10 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     } else {
       writeRaster(noburn_r, filename = out_raster, overwrite = T)
     }
-    
-    }
+    } else {
   
   ## otherwise calculate a weighted severity landscape
-  else {
+
     
     ## Make a list of severity rasters
     fire_files <- as.character(fires1$Fire_ID) %>%
@@ -76,7 +75,9 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     
     ## get vector of burn years
     years <- pull(fires1, {{fire_years}}) %>%
-      unique()
+      unique() %>% 
+      ## sort them in ascending order
+      sort()
     
     ## Created a raster for each year there was at least one fire
     sev_yrs <- lapply(years, function(x) {
@@ -90,7 +91,19 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
       {
         ## set up SpatRasterCollection avoids awkward do.call
         rsrc <- sprc(fs)
-        m <- mosaic(rsrc, fun = 'max')
+        ## use try catch around the following function to capture warnings
+        tryCatch({
+          # m <- mosaic(rsrc, fun = 'max')
+          m <- merge(rsrc)
+        },
+        warning = function(w) {
+          # Print custom message and stop the script
+          print("A warning occurred during the merge operation. Stopping the script.")
+          # Optionally, print the original warning message
+          print(conditionMessage(w))
+          # Stop execution
+          stop("Script stopped due to a warning in merge operation.")
+        })
       }
       
       ## Align with the landscape raster
@@ -110,6 +123,7 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
       x[is.na(x)] <- 0
       return(x)
     })
+    
     ## Add them up to get the cummulative number of fires
     fire_cnt <- Reduce("+", burned_l, accumulate = T)
     
@@ -156,9 +170,13 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## stack severity layers
     sev_stack <- rast(sev_yrs)
     
+    ## Clean up
+    gc()
+    
     ## Get weighted average
     weighted_sev <- if(nlyr(sev_stack) == 1) {sev_yrs[[1]]} else {
-      weighted.mean(sev_stack, w, na.rm = T)}
+      weighted.mean(sev_stack, w, na.rm = T) 
+      } ## unburned areas are NA so must not be included in the weighted mean
     
     ## Keep just the area within the buffered landscape
     land_sev <- crop(weighted_sev, vect(landscape))
