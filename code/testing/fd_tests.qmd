@@ -19,6 +19,98 @@ library(mapview)
 source(here("code/global_fd.R"))
 ```
 
+## Testing focal_fd as a wrapper for global_fd approach  
+
+```{r}
+## read in trait surfaces for one huc
+hucs <- read_sf("../../data/spatial/yose_sheds.shp")
+hmr = filter(hucs, Name == "Headwaters Merced River")
+id <- hmr$HUC10
+
+## read in trait rasters and simplify a bit
+mround <- function(x, base, digits){
+      base*round(x/base, digits = digits)
+} 
+
+fri_r <- rast(paste0("../../data/spatial/yose_fri/fri_", id, ".tif")) %>% 
+  round(digits = 0)
+sev_r <- here(paste0("data/spatial/yose_sev/sev_", id, ".tif")) %>% 
+  rast() %>% 
+  mround(base = 5, digits = 1)
+
+
+## Let's grid this huc and pull out one piece to start
+grd <- st_make_grid(hmr, n = 10)
+
+plot(fri_r)
+plot(vect(grd), add = T)
+plot(vect(grd[43]), add = T, col = 'red')
+
+## take a middle box as a subset landscape
+lnd <- grd[43]
+
+## create a point grid for each raster pixel
+r <- crop(fri_r, vect(lnd))
+r.pts <- as.points(r) #12875 points (103 x 125 raster grid)
+
+## cropped rasters for below
+fri_r2 <- r
+sev_r2 <- crop(sev_r, vect(lnd))
+
+plot(r)
+plot(r.pts, add = T, cex = 0.1)
+```
+
+now I need to run point_fd or global_fd on all of these raster points and then map back to the input raster. Let's see how slow this would be to run through point_fd. Takes 10.6 minutes to run through 12,875 points w/ a 100m radius and two equally weighted traits. 1000m radius maybe takes 3x as long?
+
+```{r}
+source(here("code/point_fd.R"))
+
+## subset (one row) of points first; goes plenty fast
+pts0 <- r.pts[1:125]
+
+tic()
+fd100 <- point_fd(
+  points = pts0,
+  traits = c(fri_r2, sev_r2),
+  tr_wt = c(2,1),
+  land_radius <- 1000,
+  proot = "C:/Users/zacks/Documents/repos/02_Public/pyrodiversity"
+)
+toc()
+
+## map back to a raster
+r.fdis <- rast(fri_r2, vals = fd100$FDis)
+```
+
+Let's test the new version of focal_fd
+
+```{r}
+source(here("code/focal_fd.R"))
+source(here("code/point_fd.R"))
+
+## subset (one row) of points first; goes plenty fast
+pts0 <- r.pts[1:125]
+
+tic()
+out <- focal_fd(traits = c(fri_r2, sev_r2), #a list of rasters (SpatRaster) with the same extent and resolution
+                    tr_wt = c(2,1), # relative weights for traits if using the FD package
+                    metric = "FDis", #character vector of FD metrics to return. Options: 'nbsp', 'FRic', 'FEve', 'FDis'
+                    land_radius = 100, # radius of the local landscape to consider for functional diversity, units are those of the length unit of the trait crs (usually meters)
+                    frich = F, #logical, whether to also calculate function richness
+                    pca_axes = "max", #number of PC dimensions to use when calculating FRic
+                    mask_lyr = NULL, #optional mask layer path (e.g. remove non-flammable areas)
+                    proot = "C:/Users/zacks/Documents/repos/02_Public/pyrodiversity", #optional project root needed to load point_fd and global_fd.R; temporary work around until this is a formal package
+                    cores = 3, #number of cores to use for parallel processing
+                    batch_size = 5000, #number of cells to process in each batch if cores > 1
+                    # method = "fundiversity",
+                    # na_replacement = T, #fundiversity will drop species that contain NAs; if TRUE na's will be replaced with the trait means
+                    out_raster = paste0(proot,"/data/scratch/test.tif")
+                    )
+toc()
+
+```
+
 ## Building out a point_fd function
 
 ```{r}

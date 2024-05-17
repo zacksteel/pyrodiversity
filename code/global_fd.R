@@ -6,7 +6,7 @@ global_fd <- function(
   tr_wt = NULL, # relative weights for traits
   frich = F, #logical, whether to also calculate function richness
   pca_axes = "max", #number of PC dimensions to use when calculating FRic
-  mask = NULL #optional mask layer path (e.g. remove non-flammable areas)
+  mask_lyr = NULL #optional mask layer path (e.g. remove non-flammable areas)
 ) {
   library(tidyverse)
   library(FD)
@@ -23,10 +23,10 @@ global_fd <- function(
   ## if null trait weights, force an equal weight
   if(is.null(tr_wt)) {tr_wt <- rep(1, nlyr(ts))}
   
-  if(!is.null(mask)) {
-    if(class(mask) == "SpatRaster") {m <- mask} else 
+  if(!is.null(mask_lyr)) {
+    if(class(mask_lyr) == "SpatRaster") {m <- mask_lyr} else 
       {
-      m <- rast(mask)
+      m <- rast(mask_lyr)
       }
 
     ## projection mask if needed

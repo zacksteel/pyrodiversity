@@ -8,7 +8,7 @@ point_fd <- function(
   land_radius, # radius of the local landscape to consider for functional diversity, units are those of the length unit of the trait crs (usually meters)
   frich = F, #logical, whether to also calculate function richness
   pca_axes = "max", #number of PC dimensions to use when calculating FRic
-  mask = NULL, #optional mask layer path (e.g. remove non-flammable areas)
+  mask_lyr = NULL, #optional mask layer path (e.g. remove non-flammable areas)
   proot = getwd() #optional project root needed to load global_fd.R; temporary work around until this is a formal package
   )
 {
@@ -34,7 +34,7 @@ point_fd <- function(
     points <- vect(points)
   }
   
-  if(crs(points) != crs(traits)) {
+  if(crs(points) != crs(ts)) {
     points <- project(points, crs(traits)[1])
   }
   
@@ -71,7 +71,7 @@ point_fd <- function(
                          tr_wt = tr_wt2,
                          frich = frich,
                          pca_axes = pca_axes,
-                         mask = mask)
+                         mask_lyr = mask_lyr)
       d.sub$radius <- land_radius
       d.sub$ntraits <- nlyr(ts.sm)
       
