@@ -28,8 +28,14 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   ## create points of each raster cell with an internal buffer equal to the land_radius
   ext.inner <- vect(ext(traits[[1]]), crs = crs(traits[[1]]))
   ext.inner <- buffer(ext.inner, -land_radius)
+  r.inner <- crop(traits[[1]], ext.inner)
   
-  pts <- as.points(crop(traits[[1]], ext.inner))
+  pts <- as.points(crop(traits[[1]], r.inner), values = F, na.rm = F)
+  
+  ## check to make sure the number of points matches the number of pixels in the inner raster
+  if(nrow(pts) != ncell(r.inner)) {
+    stop("Number of points does not match number of pixels in inner raster")
+  }
   
   ## if running in sequence just get to it
   if(cores == 1) {
@@ -89,8 +95,14 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   
   ## map results to raster
   ## remap diversity results to raster and return a multi-layer raster
-  rl = purrr::map(metric, ~rast(x = traits[[1]],
-                                vals = pd[,.x]))
+  ## if ntraits are all zero in pd, set vals to NA
+  if(sum(pd[,"ntraits"]) == 0) {
+    rl = purrr::map(metric, ~rast(x = r.inner,
+                                  vals = NA))
+  } else {
+    rl = purrr::map(metric, ~rast(x = r.inner,
+                                  vals = pd[,.x]))
+  }
   
   out = do.call(c, rl)
   names(out) = metric
