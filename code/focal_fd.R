@@ -23,6 +23,13 @@ focal_fd = function(traits, #a list of rasters (SpatRaster) with the same extent
   source(paste0(proot, "/code/point_fd.R"))
   # library(FD)
   
+  ## check to make sure length of traits matches length of tr_wt unless tr_wt is NULL
+  if(!is.null(tr_wt)) {
+    if(length(traits) != length(tr_wt)) {
+      stop("Length of traits must match length of tr_wt")
+    }
+  }
+  
   print("focal_fd is still under development, use with extreme caution! Multi-core processing is not yet implemented.")
   
   ## create points of each raster cell with an internal buffer equal to the land_radius
