@@ -8,9 +8,9 @@ global_fd <- function(
   pca_axes = "max", #number of PC dimensions to use when calculating FRic
   mask_lyr = NULL #optional mask layer path (e.g. remove non-flammable areas)
 ) {
-  library(tidyverse)
-  library(FD)
-  library(terra)
+  library(tidyverse, quietly = T, warn.conflicts = F, verbose = F)
+  library(FD, quietly = T, warn.conflicts = F, verbose = F)
+  library(terra, quietly = T, warn.conflicts = F, verbose = F)
   
   ## Read in rasters
   if(class(traits) != 'SpatRaster') {
