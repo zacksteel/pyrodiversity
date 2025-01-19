@@ -14,20 +14,22 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   library(tidyverse)
   library(sf)
   library(terra)
-  library(here)
+  # library(here)
   
   ## some checks
   if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
   
   ## Pull in severity raster to use as template
   if(is.character(raster_template)) {
-    r_template <- rast(here(raster_template))
+    r_template <- rast(raster_template)
   } else {
     r_template <- raster_template
   }
   
   ## assign fire year column name
-  fires <- rename(fires, Fire_Year = !! (sym(fire_years)))
+  fires <- rename(fires, Fire_Year = !! (sym(fire_years))) |> 
+    ## make sure Fire_Year is numeric
+    mutate(Fire_Year = as.numeric(Fire_Year))
   
   ## if end year is not supplied use dataset
   if(is.null(end_year)) {
@@ -35,7 +37,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
   }
   
   ## Only keep fires that occurred between the start and end years
-  fires <- filter(fires, Fire_Year > start_year, Fire_Year < end_year)
+  fires <- filter(fires, Fire_Year > start_year, Fire_Year < end_year) 
   
   ## Conform CRS of features to the template
   landscape <- st_transform(landscape, crs = st_crs(r_template))
@@ -95,6 +97,7 @@ fri_surface <- function(landscape, # feature(s) that represent the landscape of 
     ## Add start & end year raster
     fri_yrs <- append(list(land_r), fri_yrs) %>% 
       append(list(end_r))
+    
     
     ## if dropping first interval we want the first raster to be NA
     if(drop_censored_int) {
