@@ -29,6 +29,17 @@ point_fd <- function(
     ts <- traits
   }
   
+  ## check freq of each raster and print the number of rows (unique levels) in a message
+  if(nlyr(ts) > 1) {
+    for(i in 1:nlyr(ts)) {
+      message(paste0("Raster ", i, " has ", nrow(freq(ts[[i]])), " unique levels"))
+    }
+  } else {
+    message(paste0("Raster has ", nrow(freq(ts)), " unique levels"))
+  }
+  
+  message("Many levels can greatly slow processing. Consider rounding trait rasters if very slow.")
+  
   ## make sure points are in vect format and the same crs as traits
   if(!("SpatVector" %in% class(points))) {
     points <- vect(points)
