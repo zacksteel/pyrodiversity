@@ -8,3 +8,6 @@ Z. L. Steel, B. M. Collins, D. B. Sapsis, and S. L. Stephens, “Quantifying pyr
 
 2022-04-26 Update:  
 Surface generation functions and global_fd() (formerly known as pyrodiv_calc() ) have been updated to improve functionality and increase speed. Please let me know if you find any bugs. 
+
+2025-01-19:
+Periodic bug fixes, error checking, and improved messaging in surface and *fd functions.
