@@ -16,6 +16,9 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
   
   ## some checks
   if(decay_rate > 1) stop("Cannot have a decay rate greater than 1")
+  ## make sure fires has a Fire_ID column, stop if not
+  if(!"Fire_ID" %in% names(fires)) stop("Fires must have a Fire_ID column to match severity rasters")
+  message(paste0("Running with decay rate of ", decay_rate))
   
   ## Pull in severity raster to use as template
   if(is.character(raster_template)) {
@@ -45,7 +48,7 @@ sev_surface <- function(landscape, # feature(s) that represent the landscape of 
   ## otherwise calculate a weighted severity landscape
 
     
-    ## Make a list of severity rasters
+    ## Make a list of severity rasters; they will be empty if not in the directory
     fire_files <- as.character(fires1$Fire_ID) %>%
       sapply( function(x) list.files(severity_dir, pattern = x, full.names = T))
     
